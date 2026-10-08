@@ -319,7 +319,7 @@ body:not(.booting) .booting-only { display: none; }
   var mechFilter = "";
   var token = "", me = "";
   var ready = false, gate = null;
-  var busy = {}, camBusy = {}, saving = {};
+  var busy = {}, camBusy = {}, saving = {}, deleting = {};
   var sel = new Set();
   var zipping = false, zipLabel = "", marking = false;
   var dateFmt = new Intl.DateTimeFormat("ja-JP", { month: "numeric", day: "numeric" });
@@ -537,14 +537,18 @@ body:not(.booting) .booting-only { display: none; }
       .then(refresh)
       .then(function () { delete busy[p.id]; render(); });
   }
-  function remove(p) {
+  /* 削除は画面下に「削除しています…」を出し、失敗したらやり直せるようにする */
+  function remove(p, j) {
     if (busy[p.id]) return;
-    busy[p.id] = true; render();
+    busy[p.id] = true; deleting[p.id] = true; render();
+    j = j || newJob();
+    j.retry = function () { remove(p, j); };
+    setJob(j, "run", "「" + p.name + "」を削除しています…");
     call("api_deletePart", token, p.id)
-      .then(function () { sel.delete(p.id); })
-      .catch(function (e) { handleErr(e); })
+      .then(function () { sel.delete(p.id); finishJob(j, "「" + p.name + "」を削除しました"); },
+        function (e) { setJob(j, "error", "「" + p.name + "」を削除できませんでした: " + errText(e)); gateIfNeeded(e); })
       .then(refresh)
-      .then(function () { delete busy[p.id]; render(); });
+      .then(function () { delete busy[p.id]; delete deleting[p.id]; render(); });
   }
 
   /* ---------- CAMファイル ---------- */
@@ -578,12 +582,17 @@ body:not(.booting) .booting-only { display: none; }
     });
     chain.then(refresh).then(function () { delete camBusy[p.id]; render(); });
   }
-  function removeCam(c) {
-    camBusy[c.partId] = true; render();
+  function removeCam(c, j) {
+    if (deleting[c.id]) return;
+    camBusy[c.partId] = true; deleting[c.id] = true; render();
+    j = j || newJob();
+    j.retry = function () { removeCam(c, j); };
+    setJob(j, "run", "ファイル「" + c.name + "」を削除しています…");
     call("api_deleteFile", token, c.id)
-      .catch(function (e) { handleErr(e); })
+      .then(function () { finishJob(j, "ファイル「" + c.name + "」を削除しました"); },
+        function (e) { setJob(j, "error", "ファイル「" + c.name + "」を削除できませんでした: " + errText(e)); gateIfNeeded(e); })
       .then(refresh)
-      .then(function () { delete camBusy[c.partId]; render(); });
+      .then(function () { delete camBusy[c.partId]; delete deleting[c.id]; render(); });
   }
   function saveCam(c) {
     if (saving[c.id]) return;
@@ -604,7 +613,7 @@ body:not(.booting) .booting-only { display: none; }
       var line = h("div", { class: "cam-file" }, ext ? h("span", { class: "kind" }, ext) : null, h("span", { class: "fname" }, c.name), h("span", { class: "sz" }, fmtSize(c.size)));
       line.appendChild(h("button", { class: "linkbtn", type: "button", disabled: !!saving[c.id], onclick: function () { saveCam(c); } }, saving[c.id] ? "取得中…" : "保存"));
       var d = h("button", { class: "linkbtn", type: "button", disabled: !!camBusy[p.id] });
-      twoStep(d, "削除", "削除する？", function () { removeCam(c); });
+      twoStep(d, deleting[c.id] ? "削除中…" : "削除", "削除する？", function () { removeCam(c); });
       line.appendChild(d);
       box.appendChild(line);
     });
@@ -750,7 +759,7 @@ body:not(.booting) .booting-only { display: none; }
     var addedLine = p.createdBy ? p.createdBy + " · " + (p.createdAt ? dateFmt.format(new Date(p.createdAt)) + " に登録" : "登録") : "";
     var doneLine = done ? (p.doneBy ? p.doneBy + " · " : "") + (p.doneAt ? dateFmt.format(new Date(p.doneAt)) + " に加工済み" : "加工済み") : "";
     var del = h("button", { class: "del", type: "button", disabled: off });
-    twoStep(del, "削除", "削除する？", function () { remove(p); });
+    twoStep(del, deleting[p.id] ? "削除中…" : "削除", "削除する？", function () { remove(p); });
     var picked = sel.has(p.id);
     var pick = done ? h("span", { class: "pick-cell" })
       : h("label", { class: "pick-cell" }, h("input", { type: "checkbox", id: "pick-" + p.id, checked: picked, "aria-label": "選択: " + p.name, onchange: function (e) { togglePick(p, e.target.checked); } }));
@@ -880,7 +889,7 @@ body:not(.booting) .booting-only { display: none; }
       var row = h("div", { class: "job " + j.state }, h("span", { class: "txt" }, j.text));
       if (j.state === "error") {
         row.appendChild(h("span", { class: "btns" },
-          h("button", { class: "btn small primary", type: "button", onclick: function () { j.state = "wait"; j.text = "「" + j.part.name + "」をやり直します…"; renderJobs(); pump(); } }, "やり直す"),
+          h("button", { class: "btn small primary", type: "button", onclick: function () { j.retry(); } }, "やり直す"),
           h("button", { class: "btn small", type: "button", onclick: function () { removeJob(j); } }, "閉じる")));
       }
       box.appendChild(row);
@@ -889,8 +898,11 @@ body:not(.booting) .booting-only { display: none; }
   }
   function removeJob(j) { jobs = jobs.filter(function (x) { return x !== j; }); renderJobs(); }
   function setJob(j, state, text) { j.state = state; j.text = text; renderJobs(); }
+  function newJob() { var j = { id: ++jobSeq, state: "run", text: "" }; jobs.push(j); return j; }
+  function finishJob(j, text) { setJob(j, "done", text); setTimeout(function () { removeJob(j); }, 4000); }
   function enqueueAdd(part, files) {
     var j = { id: ++jobSeq, part: part, files: files, partId: null, state: "wait", text: "「" + part.name + "」を追加待ち…" };
+    j.retry = function () { j.state = "wait"; j.text = "「" + part.name + "」をやり直します…"; renderJobs(); pump(); };
     jobs.push(j); renderJobs(); pump();
   }
   /* 1件ずつ順番に処理する（ロックの取り合いを避けるため） */
