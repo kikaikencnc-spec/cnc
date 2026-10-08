@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CNC加工タスク</title>
+<title>板パーツ加工</title>
 <meta name="referrer" content="no-referrer">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -186,6 +186,11 @@ body:not(.booting) .booting-only { display: none; }
 .p-meta { align-items: baseline; }
 .p-meta .qty { order: -1; font-size: 20px; font-weight: 700; line-height: 1.2; }
 .is-done .p-meta .qty { color: var(--muted); }
+/* 加工の種類 */
+.proc-tabs { align-self: flex-start; max-width: 100%; overflow-x: auto; }
+.proc-pill { font-size: 12px; font-weight: 700; padding: 2px 10px; border-radius: 6px; background: var(--fg); color: var(--bg); white-space: nowrap; }
+.proc-pill.none { background: transparent; color: var(--muted); border: 1px dashed var(--line-strong); }
+.p-proc select { font-size: 12px; padding: 1px 4px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--muted); max-width: 100%; }
 /* プロジェクト */
 .me-box { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
 .proj-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
@@ -239,13 +244,13 @@ body:not(.booting) .booting-only { display: none; }
 <div class="wrap">
   <header>
     <div class="head-row">
-      <h1>CNC加工タスク</h1>
+      <h1>板パーツ加工</h1>
       <div class="me-box">
         <div class="me" id="proj" hidden>プロジェクト <strong id="proj-name"></strong>・<button class="linkbtn" id="proj-change" type="button">切り替え</button></div>
         <div class="me" id="me" hidden><strong id="me-name"></strong> として操作中・<button class="linkbtn" id="me-change" type="button">変更</button></div>
       </div>
     </div>
-    <p>各機構から要求された部品を、板厚と材質ごとにまとめて管理します。区画の「未加工をすべて選択」で同じ板材から切る部品をまとめて選び、不要なものを外してCAMを一括で保存できます。</p>
+    <p>各機構から要求された板パーツを、加工の種類（CNC・レーザー）と板厚・材質ごとにまとめて管理します。区画の「未加工をすべて選択」で同じ板材から切る部品をまとめて選び、不要なものを外してファイルを一括で保存できます。</p>
   </header>
 
   <div id="notice" class="notice" hidden></div>
@@ -304,7 +309,8 @@ body:not(.booting) .booting-only { display: none; }
       <div class="field"><label for="f-qty">数量</label><input id="f-qty" class="mono" required type="number" inputmode="numeric" step="1" min="1" max="999" value="1"></div>
       <div class="field"><label for="f-mech">要求元の機構</label><input id="f-mech" list="mech-list" maxlength="40" placeholder="例: 足回り"></div>
       <div class="field wide"><label for="f-note">備考</label><input id="f-note" maxlength="200" placeholder="例: 穴径は図面の公差どおり"></div>
-      <div class="field wide" id="f-files-wrap"><label for="f-files">CAM・CADファイル（任意・複数可・1ファイル20MBまで）</label><input id="f-files" type="file" multiple></div>
+      <div class="field"><label for="f-proc">加工の種類</label><select id="f-proc"></select></div>
+      <div class="field wide" id="f-files-wrap"><label for="f-files">CAM・CADファイル（任意・複数可・1ファイル20MBまで。.ipt は CNC、.dxf はレーザーに自動で分類）</label><input id="f-files" type="file" multiple></div>
       <div class="form-actions">
         <button class="btn primary" id="f-submit" type="submit">追加する</button>
         <span class="msg" id="f-msg" role="status" aria-live="polite"></span>
@@ -313,6 +319,8 @@ body:not(.booting) .booting-only { display: none; }
       <datalist id="mech-list"></datalist>
     </form>
   </details>
+
+  <div class="tabs proc-tabs app-only" id="proc-tabs" role="group" aria-label="加工の種類"></div>
 
   <div class="toolbar app-only">
     <div class="tabs" role="group" aria-label="表示する状態">
@@ -350,10 +358,28 @@ body:not(.booting) .booting-only { display: none; }
 </div>
 
 <script async src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script>window.CNC_API_URL = "https://script.google.com/macros/s/AKfycbzG0rqrxeCfHqBO56nabBBjuAPPg1CUwbHo9tm_4wfaStB5TYClO_L_YvzGN9crI0bz/exec"; window.CNC_BUILD = "2026-10-08 21:41:37";</script>
+<script>window.CNC_API_URL = "https://script.google.com/macros/s/AKfycbzG0rqrxeCfHqBO56nabBBjuAPPg1CUwbHo9tm_4wfaStB5TYClO_L_YvzGN9crI0bz/exec"; window.CNC_BUILD = "2026-10-08 22:06:29";</script>
 <script>
 (function () {
   var NO_MAT = "材質未設定";
+  /* 加工の種類。増やすときはここと Data.gs の PROCESSES_ に足す（CLAUDE.md「加工の種類」参照）。
+     form: 入力項目の型。今は板（板厚・材質）だけ。角パイプや3Dプリンターを足すときは型を増やす */
+  var PROCESSES = [
+    { id: "cnc", label: "CNC加工", short: "CNC", exts: ["ipt", "nc", "tap"], form: "plate" },
+    { id: "laser", label: "レーザー加工", short: "レーザー", exts: ["dxf"], form: "plate" }
+  ];
+  var NONE_PROC = { id: "none", label: "未分類", short: "未分類", exts: [], form: "plate" };
+  function procInfo(id) { return PROCESSES.filter(function (x) { return x.id === id; })[0] || NONE_PROC; }
+  function procOf(p) { return procInfo(p.process).id; }
+  function procOrder(id) { var i = PROCESSES.map(function (x) { return x.id; }).indexOf(id); return i < 0 ? PROCESSES.length : i; }
+  /* ファイル名から種類を決める（最初に当てはまったもの）。決まらなければ "" */
+  function inferProcess(names) {
+    for (var i = 0; i < names.length; i++) {
+      var ext = extOf(names[i]);
+      for (var j = 0; j < PROCESSES.length; j++) if (PROCESSES[j].exts.indexOf(ext) >= 0) return PROCESSES[j].id;
+    }
+    return "";
+  }
   var MAX_BYTES = 20 * 1024 * 1024;
   var STATUS_CHUNK = 5;   /* 一括の加工済み: 1回の呼び出しで送る件数（ロックを長く持たないため） */
   var FETCH_PARALLEL = 4; /* zip 作成: 同時に取得するファイル数 */
@@ -368,7 +394,8 @@ body:not(.booting) .booting-only { display: none; }
   var parts = [], cams = [], members = [], rev = null;
   var view = "all";
   var mechFilter = "";
-  var whoFilter = ""; /* "" すべて / "@me" 自分の担当 / "@none" 担当なし / 名前 */
+  var whoFilter = "";
+  var procFilter = ""; /* "" すべて / 種類の id */ /* "" すべて / "@me" 自分の担当 / "@none" 担当なし / 名前 */
   var token = "", me = "", projectId = "", projects = [];
   var ready = false, gate = null;
   var busy = {}, camBusy = {}, saving = {}, deleting = {};
@@ -803,14 +830,15 @@ body:not(.booting) .booting-only { display: none; }
     if (typeof JSZip === "undefined") { showNotice("zip作成用の部品を読み込めませんでした。ページを開き直してください。"); return; }
     zipping = true; zipLabel = ""; updateBar();
     var z = new JSZip();
-    var rows = [["板厚(mm)", "材質", "部品名", "数量", "機構", "備考", "CAMファイル"]];
+    var rows = [["加工の種類", "板厚(mm)", "材質", "部品名", "数量", "機構", "備考", "CAMファイル"]];
     var noCam = [], failed = [], jobs = [];
-    var groups = unique(list.map(function (p) { return tKey(p.thickness) + "|" + matOf(p); }));
-    list.sort(function (a, b) { return a.thickness - b.thickness || matOf(a).localeCompare(matOf(b), "ja") || String(a.name).localeCompare(String(b.name), "ja"); })
+    var groups = unique(list.map(groupKey));
+    var procs = unique(list.map(procOf));
+    list.sort(function (a, b) { return procOrder(procOf(a)) - procOrder(procOf(b)) || a.thickness - b.thickness || matOf(a).localeCompare(matOf(b), "ja") || String(a.name).localeCompare(String(b.name), "ja"); })
       .forEach(function (p) {
-        var dir = "t" + fmtT(p.thickness) + "mm_" + safe(matOf(p)) + "/" + safe(p.name) + "_x" + (p.qty || 1) + (p.mechanism ? "_" + safe(p.mechanism) : "") + "/";
+        var dir = (procs.length > 1 ? safe(procInfo(procOf(p)).label) + "/" : "") + "t" + fmtT(p.thickness) + "mm_" + safe(matOf(p)) + "/" + safe(p.name) + "_x" + (p.qty || 1) + (p.mechanism ? "_" + safe(p.mechanism) : "") + "/";
         var files = camsOf(p.id);
-        rows.push([fmtT(p.thickness), matOf(p), p.name, p.qty || 1, p.mechanism || "", p.note || "", files.map(function (c) { return c.name; }).join(" / ")]);
+        rows.push([procInfo(procOf(p)).label, fmtT(p.thickness), matOf(p), p.name, p.qty || 1, p.mechanism || "", p.note || "", files.map(function (c) { return c.name; }).join(" / ")]);
         if (!files.length) noCam.push(p.name);
         var used = {};
         files.forEach(function (c) {
@@ -830,8 +858,10 @@ body:not(.booting) .booting-only { display: none; }
       return z.generateAsync({ type: "blob", compression: "DEFLATE", compressionOptions: { level: 6 } });
     }).then(function (blob) {
       var d = new Date(), stamp = d.getFullYear() + String(d.getMonth() + 1).padStart(2, "0") + String(d.getDate()).padStart(2, "0");
-      var label = groups.length === 1 ? "_t" + fmtT(parseFloat(groups[0].split("|")[0])) + "mm_" + safe(groups[0].split("|")[1]) : "_" + groups.length + "区画";
-      saveBlob(blob, "CNC_" + safe(projectName() || "プロジェクト") + label + "_" + list.length + "点_" + stamp + ".zip");
+      var g0 = groups[0].split("|");
+      var label = groups.length === 1 ? "_t" + fmtT(parseFloat(g0[1])) + "mm_" + safe(g0.slice(2).join("|")) : "_" + groups.length + "区画";
+      var head = procs.length === 1 ? procInfo(procs[0]).short : "板パーツ";
+      saveBlob(blob, safe(head) + "_" + safe(projectName() || "プロジェクト") + label + "_" + list.length + "点_" + stamp + ".zip");
       var m = "保存しました。";
       if (failed.length) m += "取得できなかったファイル: " + failed.join("、") + "。";
       m += noCam.length ? "CAMが無い部品: " + noCam.join("、") + "（加工リスト.csv には含めています）" : "zip内の「加工リスト.csv」に数量と機構をまとめています。";
@@ -868,6 +898,20 @@ body:not(.booting) .booting-only { display: none; }
       marking = false;
       render();
     });
+  }
+  function setProcess(p, value) {
+    if (busy[p.id]) return;
+    busy[p.id] = true; render();
+    call("api_updatePart", token, p.id, { process: value }, me).catch(function (e) { handleErr(e); })
+      .then(refresh)
+      .then(function () { delete busy[p.id]; render(); });
+  }
+  function procBlock(p, off) {
+    var cur = procOf(p);
+    var sel = h("select", { "aria-label": "加工の種類: " + p.name, disabled: off, onchange: function (e) { setProcess(p, e.target.value); } },
+      PROCESSES.concat([NONE_PROC]).map(function (x) { return h("option", { value: x.id }, x.label); }));
+    sel.value = cur;
+    return h("div", { class: "p-proc" }, sel);
   }
   function assignBlock(p, off) {
     if (p.status === "done") return null;
@@ -922,7 +966,7 @@ body:not(.booting) .booting-only { display: none; }
     if (!list.length) return;
     var nCam = 0, noCam = 0;
     list.forEach(function (p) { var k = camsOf(p.id).length; nCam += k; if (!k) noCam++; });
-    var nGroups = unique(list.map(function (p) { return tKey(p.thickness) + "|" + matOf(p); })).length;
+    var nGroups = unique(list.map(groupKey)).length;
     $("ab-count").textContent = list.length + "点を選択中（計" + sumQty(list) + "個）";
     $("ab-detail").textContent = nGroups + "区画 · CAM " + nCam + "件" + (noCam ? " · CAMなし " + noCam + "点" : "");
     $("ab-zip").disabled = zipping;
@@ -934,6 +978,7 @@ body:not(.booting) .booting-only { display: none; }
   }
 
   /* ---------- 描画 ---------- */
+  function groupKey(p) { return procOf(p) + "|" + tKey(p.thickness) + "|" + matOf(p); }
   function sumQty(list) { return list.reduce(function (s, p) { return s + (p.qty || 0); }, 0); }
   function unique(list) { return Array.from(new Set(list.filter(Boolean))); }
 
@@ -1010,11 +1055,35 @@ body:not(.booting) .booting-only { display: none; }
           p.mechanism ? h("span", null, p.mechanism) : null,
           h("span", { class: "qty" }, "×" + (p.qty || 1))),
         assignBlock(p, off),
+        procBlock(p, off),
         p.note ? h("span", { class: "p-note" }, p.note) : null,
         addedLine ? h("span", { class: "p-by" }, addedLine) : null,
         done ? h("span", { class: "p-done" }, doneLine) : null,
         camBlock(p)),
       del);
+  }
+
+  /* 加工の種類の切り替え（部品のある種類と、選んでいる種類だけ出す） */
+  function renderProcTabs() {
+    var box = $("proc-tabs"); box.textContent = "";
+    var count = {};
+    parts.forEach(function (p) { var k = procOf(p); count[k] = (count[k] || 0) + 1; });
+    var items = [{ id: "", label: "すべて" }].concat(PROCESSES).concat(count.none ? [NONE_PROC] : []);
+    if (procFilter && !items.some(function (x) { return x.id === procFilter; })) items.push(procInfo(procFilter));
+    items.forEach(function (x) {
+      box.appendChild(h("button", { type: "button", "aria-pressed": String(procFilter === x.id), onclick: function () {
+        procFilter = x.id; store("cnc-proc", x.id); syncProcSelect(); render();
+      } }, x.label, h("span", { class: "n" }, String(x.id ? (count[x.id] || 0) : parts.length))));
+    });
+  }
+  /* 追加フォームの種類: 種類で絞り込んでいるときはその種類を初期値にする */
+  function syncProcSelect() {
+    var s = $("f-proc");
+    if (!s.options.length) {
+      s.appendChild(h("option", { value: "auto" }, "自動（ファイルから判定）"));
+      PROCESSES.concat([NONE_PROC]).forEach(function (x) { s.appendChild(h("option", { value: x.id }, x.label)); });
+    }
+    if (procFilter) s.value = procFilter;
   }
 
   function render() {
@@ -1024,7 +1093,8 @@ body:not(.booting) .booting-only { display: none; }
     var todoIds = new Set(parts.filter(function (p) { return p.status !== "done"; }).map(function (p) { return p.id; }));
     sel.forEach(function (id) { if (!todoIds.has(id)) sel.delete(id); });
 
-    var scoped = parts.filter(function (p) { return (!mechFilter || p.mechanism === mechFilter) && whoMatch(p); });
+    renderProcTabs();
+    var scoped = parts.filter(function (p) { return (!mechFilter || p.mechanism === mechFilter) && whoMatch(p) && (!procFilter || procOf(p) === procFilter); });
     var todo = scoped.filter(function (p) { return p.status !== "done"; });
     var done = scoped.filter(function (p) { return p.status === "done"; });
     var tq = sumQty(todo), dq = sumQty(done), total = tq + dq;
@@ -1035,7 +1105,7 @@ body:not(.booting) .booting-only { display: none; }
     $("s-pct").append(String(pct), h("small", null, "%"));
     $("s-bar").style.width = pct + "%";
     $("n-all").textContent = scoped.length; $("n-todo").textContent = todo.length; $("n-done").textContent = done.length;
-    Array.prototype.forEach.call(document.querySelectorAll(".tabs button"), function (b) { b.setAttribute("aria-pressed", String(b.dataset.view === view)); });
+    Array.prototype.forEach.call(document.querySelectorAll(".tabs button[data-view]"), function (b) { b.setAttribute("aria-pressed", String(b.dataset.view === view)); });
     updateBar();
 
     var root = $("groups"); root.textContent = "";
@@ -1048,14 +1118,14 @@ body:not(.booting) .booting-only { display: none; }
       return;
     }
     var byG = {};
-    scoped.forEach(function (p) { var k = tKey(p.thickness) + "|" + matOf(p); (byG[k] = byG[k] || []).push(p); });
+    scoped.forEach(function (p) { var k = groupKey(p); (byG[k] = byG[k] || []).push(p); });
     var keys = Object.keys(byG).sort(function (a, b) {
       var A = a.split("|"), B = b.split("|");
-      return parseFloat(A[0]) - parseFloat(B[0]) || (A[1] === NO_MAT) - (B[1] === NO_MAT) || A[1].localeCompare(B[1], "ja");
+      return procOrder(A[0]) - procOrder(B[0]) || parseFloat(A[1]) - parseFloat(B[1]) || (A[2] === NO_MAT) - (B[2] === NO_MAT) || A[2].localeCompare(B[2], "ja");
     });
     var shown = 0;
     keys.forEach(function (k) {
-      var items = byG[k], t = parseFloat(k.split("|")[0]), mat = k.split("|")[1];
+      var items = byG[k], kp = k.split("|"), proc = procInfo(kp[0]), t = parseFloat(kp[1]), mat = kp.slice(2).join("|");
       var gt = items.filter(function (p) { return p.status !== "done"; }).sort(function (a, b) { return (a.createdAt || 0) - (b.createdAt || 0); });
       var gd = items.filter(function (p) { return p.status === "done"; }).sort(function (a, b) { return (b.doneAt || 0) - (a.doneAt || 0); });
       var showT = view !== "done" && gt.length, showD = view !== "todo" && gd.length;
@@ -1063,6 +1133,7 @@ body:not(.booting) .booting-only { display: none; }
       shown++;
       var nSel = gt.filter(function (p) { return sel.has(p.id); }).length;
       var head = h("div", { class: "g-head" },
+        h("span", { class: "proc-pill" + (proc.id === "none" ? " none" : "") }, proc.label),
         h("div", { class: "t" }, h("span", { class: "t-lbl" }, "板厚"), fmtT(t), h("small", null, "mm")),
         h("span", { class: "g-mat" + (mat === NO_MAT ? " none" : "") }, mat),
         h("div", { class: "g-meta" },
@@ -1074,7 +1145,7 @@ body:not(.booting) .booting-only { display: none; }
           h("input", { type: "checkbox", id: gid, checked: nSel === gt.length, indeterminate: nSel > 0 && nSel < gt.length, onchange: function (e) { toggleGroup(gt, e.target.checked); } }),
           nSel ? nSel + "/" + gt.length + " 選択中" : "未加工をすべて選択"));
       }
-      var g = h("section", { class: "group", "aria-label": "板厚 " + fmtT(t) + " mm " + mat }, head);
+      var g = h("section", { class: "group", "aria-label": proc.label + " 板厚 " + fmtT(t) + " mm " + mat }, head);
       if (showT) {
         g.appendChild(h("div", { class: "sub todo" }, h("span", null, "未加工"), h("span", null, gt.length + "点")));
         g.appendChild(h("ul", { class: "parts" }, gt.map(partRow)));
@@ -1093,7 +1164,7 @@ body:not(.booting) .booting-only { display: none; }
   }
 
   /* ---------- イベント ---------- */
-  Array.prototype.forEach.call(document.querySelectorAll(".tabs button"), function (b) {
+  Array.prototype.forEach.call(document.querySelectorAll(".tabs button[data-view]"), function (b) {
     b.addEventListener("click", function () {
       view = b.dataset.view;
       store("cnc-view", view);
@@ -1173,7 +1244,8 @@ body:not(.booting) .booting-only { display: none; }
     }).then(function (failed) {
       if (!failed.length) {
         var n = j.files.length;
-        setJob(j, "done", "「" + name + "」を 板厚" + fmtT(j.part.thickness) + "mm・" + (j.part.material || NO_MAT) + " に追加しました" + (n ? "（ファイル" + n + "件）" : ""));
+        var pl = procInfo(j.part.process || inferProcess(j.files.map(function (f) { return f.name; }))).label;
+        setJob(j, "done", "「" + name + "」を " + pl + "・板厚" + fmtT(j.part.thickness) + "mm・" + (j.part.material || NO_MAT) + " に追加しました" + (n ? "（ファイル" + n + "件）" : ""));
         setTimeout(function () { removeJob(j); }, 4000);
         return;
       }
@@ -1205,7 +1277,9 @@ body:not(.booting) .booting-only { display: none; }
     var big = fs.filter(function (f) { return f.size > MAX_BYTES; });
     if (big.length) { say(msg, "ファイルが大きすぎます（1ファイル20MBまで）: " + big.map(function (f) { return f.name; }).join("、"), true); return; }
     if (!projectId) { say(msg, "プロジェクトを選んでください。", true); return; }
-    enqueueAdd({ projectId: projectId, name: name, thickness: Math.round(t * 1000) / 1000, material: $("f-mat").value.trim(), qty: qty, mechanism: $("f-mech").value.trim(), note: $("f-note").value.trim() }, fs);
+    var pv = $("f-proc").value;
+    var proc = pv === "auto" ? inferProcess(fs.map(function (f) { return f.name; })) : pv;
+    enqueueAdd({ projectId: projectId, process: proc, name: name, thickness: Math.round(t * 1000) / 1000, material: $("f-mat").value.trim(), qty: qty, mechanism: $("f-mech").value.trim(), note: $("f-note").value.trim() }, fs);
     /* 板厚・材質・機構は続けて同じものを入れることが多いので残す */
     say(msg, "");
     $("f-name").value = ""; $("f-note").value = ""; $("f-qty").value = "1"; fi.value = "";
@@ -1231,6 +1305,8 @@ body:not(.booting) .booting-only { display: none; }
 
   /* ---------- 起動 ---------- */
   var v = load("cnc-view"); if (v === "todo" || v === "done" || v === "all") view = v;
+  var pf = load("cnc-proc"); if (pf && procInfo(pf).id === pf) procFilter = pf;
+  syncProcSelect();
   token = load("cnc-token");
   projectId = load("cnc-project");
   setMe(load("cnc-name"));
