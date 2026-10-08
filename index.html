@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>加工タスク管理</title>
+<title>Kakkou</title>
 <meta name="referrer" content="no-referrer">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -273,6 +273,8 @@ button.due:disabled { cursor: default; opacity: .6; }
 .due.blue { color: var(--urg-blue); border-color: var(--urg-blue); background: color-mix(in srgb, var(--urg-blue) 12%, var(--surface)); }
 .p-due { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 2px; }
 .due-input { font: 600 14px var(--mono); padding: 3px 6px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface-2); }
+/* 見出しの名前（Kakkou）に添える説明 */
+header h1 .h1-sub { font-size: 13px; font-weight: 500; color: var(--muted); margin-left: 6px; letter-spacing: .04em; }
 /* 部品を登録した人 */
 .p-by { font-size: 12px; color: var(--muted); }
 
@@ -299,7 +301,7 @@ button.due:disabled { cursor: default; opacity: .6; }
 <div class="wrap">
   <header>
     <div class="head-row">
-      <h1>加工タスク管理</h1>
+      <h1>Kakkou <small class="h1-sub">加工タスク管理</small></h1>
       <div class="me-box">
         <div class="me" id="proj" hidden>プロジェクト <strong id="proj-name"></strong>・<button class="linkbtn" id="proj-change" type="button">切り替え</button></div>
         <div class="me" id="me" hidden><strong id="me-name"></strong> として操作中・<button class="linkbtn" id="me-change" type="button">変更</button></div>
@@ -442,7 +444,7 @@ button.due:disabled { cursor: default; opacity: .6; }
 </div>
 
 <script async src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script>window.CNC_API_URL = "https://script.google.com/macros/s/AKfycbzG0rqrxeCfHqBO56nabBBjuAPPg1CUwbHo9tm_4wfaStB5TYClO_L_YvzGN9crI0bz/exec"; window.CNC_BUILD = "2026-10-09 00:43:47";</script>
+<script>window.CNC_API_URL = "https://script.google.com/macros/s/AKfycbzG0rqrxeCfHqBO56nabBBjuAPPg1CUwbHo9tm_4wfaStB5TYClO_L_YvzGN9crI0bz/exec"; window.CNC_BUILD = "2026-10-09 00:56:38";</script>
 <script>
 (function () {
   var NO_MAT = "材質未設定";
