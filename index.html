@@ -1,0 +1,982 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CNC加工タスク</title>
+<meta name="referrer" content="no-referrer">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans+JP:wght@400;500;700&display=swap">
+<style>
+/* Layout: 厚さごとの区画。各区画の中で 未加工 → 加工済み の順に並べる。上に全体の進捗と追加フォーム。 */
+:root {
+  --bg: #eef1f3;
+  --surface: #ffffff;
+  --surface-2: #f6f8f9;
+  --fg: #172026;
+  --muted: #5b6a73;
+  --line: #d3dade;
+  --line-strong: #aab5bb;
+  --accent: #0a6a86;
+  --on-accent: #ffffff;
+  --todo: #a94410;
+  --todo-bg: #fbece3;
+  --done: #1f6a40;
+  --done-bg: #e3f2ea;
+  --on-done: #ffffff;
+  --danger: #b3261e;
+  --sans: "IBM Plex Sans JP", "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11171b; --surface: #1a2227; --surface-2: #20292f; --fg: #e6ecef; --muted: #93a3ad;
+    --line: #2f3b42; --line-strong: #52636d; --accent: #4cb5d3; --on-accent: #08222b;
+    --todo: #f0905a; --todo-bg: #3a2418; --done: #6cc592; --done-bg: #17301f; --on-done: #0d1f14;
+    --danger: #ff8a80; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11171b; --surface: #1a2227; --surface-2: #20292f; --fg: #e6ecef; --muted: #93a3ad;
+  --line: #2f3b42; --line-strong: #52636d; --accent: #4cb5d3; --on-accent: #08222b;
+  --todo: #f0905a; --todo-bg: #3a2418; --done: #6cc592; --done-bg: #17301f; --on-done: #0d1f14;
+  --danger: #ff8a80; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font-family: var(--sans); font-size: 15px; line-height: 1.55; }
+.wrap { max-width: 880px; margin-inline: auto; padding-inline: 16px; padding-block: 24px 56px; display: flex; flex-direction: column; gap: 20px; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+header h1 { margin: 0; font-size: 24px; line-height: 1.25; font-weight: 700; text-wrap: balance; }
+header p { margin: 4px 0 0; color: var(--muted); }
+
+.summary { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.stats { display: flex; flex-wrap: wrap; gap: 12px 36px; }
+.stat { display: flex; flex-direction: column; min-width: 0; }
+.stat .lbl { font-size: 12px; letter-spacing: .06em; color: var(--muted); }
+.stat .num { font: 600 30px/1.1 var(--mono); font-variant-numeric: tabular-nums; }
+.stat .num small { font: 400 13px var(--sans); color: var(--muted); margin-left: 4px; }
+.stat.todo .num { color: var(--todo); }
+.stat.done .num { color: var(--done); }
+.bar { height: 8px; border-radius: 4px; background: var(--todo-bg); overflow: hidden; }
+.bar > i { display: block; height: 100%; background: var(--done); width: 0; transition: width .3s; }
+@media (prefers-reduced-motion: reduce) { .bar > i { transition: none; } }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+.panel > summary { list-style: none; padding: 12px 16px; font-weight: 700; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+.panel > summary::-webkit-details-marker { display: none; }
+.panel > summary::after { content: "＋"; font-family: var(--mono); color: var(--accent); }
+.panel[open] > summary::after { content: "－"; }
+form.add { padding: 4px 16px 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.field label { font-size: 12px; color: var(--muted); letter-spacing: .04em; }
+.field.wide { grid-column: span 2; }
+@media (max-width: 460px) { .field.wide { grid-column: auto; } }
+.field input, .field select { width: 100%; min-width: 0; padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface-2); }
+.field input.mono { font-family: var(--mono); }
+.btn { padding: 8px 16px; border-radius: 6px; border: 1px solid var(--line-strong); background: var(--surface); font-weight: 500; }
+.btn.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 700; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.form-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.msg { color: var(--muted); font-size: 13px; min-width: 0; }
+.msg.err { color: var(--danger); }
+
+.toolbar { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between; }
+.tabs { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.tabs button { border: 0; background: transparent; padding: 7px 14px; font-weight: 500; }
+.tabs button + button { border-left: 1px solid var(--line); }
+.tabs button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+.tabs .n { font-family: var(--mono); font-size: 12px; margin-left: 6px; opacity: .8; }
+.mech { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+.mech select { padding: 6px 8px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface); max-width: 60vw; }
+
+.groups { display: flex; flex-direction: column; gap: 16px; }
+.group { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.g-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 12px 16px; background: var(--surface-2); }
+.t { font: 600 28px/1 var(--mono); font-variant-numeric: tabular-nums; }
+.t small { font-size: 13px; font-weight: 500; color: var(--muted); margin-left: 4px; }
+.t .t-lbl { font: 500 12px var(--sans); color: var(--muted); letter-spacing: .06em; margin-right: 6px; vertical-align: middle; }
+.g-meta { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; min-width: 0; }
+.pill { font-size: 12px; padding: 2px 8px; border-radius: 999px; font-family: var(--mono); white-space: nowrap; }
+.pill.todo { background: var(--todo-bg); color: var(--todo); }
+.pill.done { background: var(--done-bg); color: var(--done); }
+.pill.mat { border: 1px solid var(--line-strong); color: var(--muted); }
+.btn.small { padding: 4px 10px; font-size: 13px; }
+.btn.armed { background: var(--todo); color: var(--surface); border-color: var(--todo); }
+
+.sub { display: flex; justify-content: space-between; padding: 6px 16px; font-size: 12px; letter-spacing: .06em; font-weight: 700; border-top: 1px solid var(--line); }
+.sub.todo { background: var(--todo-bg); color: var(--todo); }
+.sub.done { background: var(--done-bg); color: var(--done); }
+ul.parts { list-style: none; margin: 0; padding: 0; }
+.part { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: start; padding: 12px 16px; border-top: 1px solid var(--line); }
+.part:first-child { border-top: 0; }
+.check { width: 30px; height: 30px; border-radius: 6px; border: 2px solid var(--line-strong); background: var(--surface); display: grid; place-items: center; padding: 0; color: transparent; }
+.check svg { width: 18px; height: 18px; }
+.check[aria-pressed="true"] { background: var(--done); border-color: var(--done); color: var(--on-done); }
+.check:not(:disabled):hover { border-color: var(--done); }
+.p-main { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.p-name { font-weight: 700; overflow-wrap: anywhere; }
+.p-meta { display: flex; flex-wrap: wrap; gap: 2px 12px; color: var(--muted); font-size: 13px; }
+.p-meta .qty { font-family: var(--mono); color: var(--fg); font-weight: 600; }
+.p-note { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.p-done { font-size: 12px; color: var(--done); }
+.is-done .p-name { color: var(--muted); font-weight: 500; }
+.del { border: 0; background: transparent; color: var(--muted); padding: 4px 8px; border-radius: 6px; font-size: 13px; }
+.del:hover { color: var(--danger); }
+.del.armed { background: var(--danger); color: var(--surface); }
+.cam { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
+.cam-file { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; font-size: 13px; }
+.cam-file a { color: var(--accent); font-family: var(--mono); overflow-wrap: anywhere; }
+.cam-file .sz { color: var(--muted); font-family: var(--mono); font-size: 12px; }
+.linkbtn { border: 0; background: transparent; color: var(--accent); padding: 2px 4px; font-size: 13px; text-decoration: underline; border-radius: 4px; text-align: left; }
+.linkbtn:disabled { opacity: .5; cursor: not-allowed; }
+.linkbtn.armed { background: var(--danger); color: var(--surface); text-decoration: none; }
+.cam-file .kind { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; font-family: var(--mono); }
+.cam-file .fname { font-family: var(--mono); overflow-wrap: anywhere; }
+.cam-none { font-size: 12px; color: var(--todo); }
+
+/* 選択 */
+.part { grid-template-columns: auto auto 1fr auto; }
+.pick-cell { width: 22px; display: grid; place-items: center; height: 30px; }
+.pick-cell input, .g-pick input { width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; margin: 0; }
+.part.picked { background: color-mix(in srgb, var(--accent) 9%, var(--surface)); }
+.g-pick { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; padding: 4px 10px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface); cursor: pointer; }
+.g-mat { font: 600 15px var(--sans); }
+.g-mat.none { color: var(--muted); font-weight: 500; }
+
+.actionbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; background: var(--fg); color: var(--bg); padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px)); box-shadow: 0 -4px 18px rgba(0,0,0,.18); }
+.actionbar .in { max-width: 880px; margin-inline: auto; display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; justify-content: space-between; }
+.ab-info { display: flex; flex-direction: column; min-width: 0; }
+.ab-info strong { font-size: 15px; }
+.ab-info span { font-size: 12px; opacity: .8; }
+.ab-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+.actionbar .btn { background: transparent; color: var(--bg); border-color: color-mix(in srgb, var(--bg) 45%, transparent); }
+.actionbar .btn.primary { background: var(--bg); color: var(--fg); border-color: var(--bg); }
+.actionbar .btn.armed { background: var(--todo); color: var(--surface); border-color: var(--todo); }
+body.has-bar .wrap { padding-bottom: 150px; }
+.field input[type="file"] { padding: 6px; font-size: 13px; }
+.part.dropping { outline: 2px dashed var(--accent); outline-offset: -4px; background: color-mix(in srgb, var(--accent) 12%, var(--surface)); }
+
+.empty { border: 1px dashed var(--line-strong); border-radius: 10px; padding: 28px 20px; color: var(--muted); display: flex; flex-direction: column; gap: 6px; }
+.empty strong { color: var(--fg); font-size: 16px; }
+.notice { background: var(--todo-bg); color: var(--todo); border-radius: 8px; padding: 10px 14px; font-size: 13px; }
+
+/* ---- Apps Script 版で追加（名前の選択・合言葉） ---- */
+[hidden] { display: none !important; }
+body { margin: 0; }
+.head-row { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; }
+.me { font-size: 13px; color: var(--muted); }
+.me strong { color: var(--fg); font-weight: 700; }
+.gate { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.gate h2 { margin: 0; font-size: 16px; }
+.gate p { margin: 0; color: var(--muted); font-size: 13px; }
+.gate form { display: flex; flex-direction: column; gap: 12px; }
+.gate .field { max-width: 360px; }
+body.gated .app-only { display: none !important; }
+/* 最初の読み込みが終わるまで（合言葉の確認前）は画面の枠も出さない */
+body.booting .app-only, body.booting .me { display: none !important; }
+body:not(.booting) .booting-only { display: none; }
+
+/* 数量を一目で分かるように大きく、先頭に出す */
+.p-meta { align-items: baseline; }
+.p-meta .qty { order: -1; font-size: 20px; font-weight: 700; line-height: 1.2; }
+.is-done .p-meta .qty { color: var(--muted); }
+/* 部品を登録した人 */
+.p-by { font-size: 12px; color: var(--muted); }
+
+/* 画面下: 部品追加の状況（失敗したらやり直せる）と選択の操作バー */
+.dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; display: flex; flex-direction: column; pointer-events: none; }
+.dock > * { pointer-events: auto; }
+.dock .actionbar { position: static; }
+.jobs { display: flex; flex-direction: column; gap: 6px; width: 100%; max-width: 912px; margin-inline: auto; padding: 0 16px; pointer-events: none; }
+.jobs:not(:empty) { padding-bottom: 8px; }
+.job { pointer-events: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 10px 14px; border-radius: 8px; background: var(--surface); border: 1px solid var(--line-strong); box-shadow: 0 4px 14px rgba(0,0,0,.15); font-size: 13px; }
+.job .txt { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.job .btns { display: flex; gap: 8px; }
+.job.run .txt::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 8px; vertical-align: -1px; border: 2px solid var(--line-strong); border-top-color: var(--accent); border-radius: 50%; animation: job-spin .8s linear infinite; }
+.job.wait .txt { color: var(--muted); }
+.job.done { border-color: var(--done); background: var(--done-bg); color: var(--done); }
+.job.error { border-color: var(--danger); }
+.job.error .txt { color: var(--danger); }
+@keyframes job-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .job.run .txt::before { animation: none; } }
+</style>
+
+</head>
+<body class="booting">
+<div class="wrap">
+  <header>
+    <div class="head-row">
+      <h1>CNC加工タスク</h1>
+      <div class="me" id="me" hidden><strong id="me-name"></strong> として操作中・<button class="linkbtn" id="me-change" type="button">変更</button></div>
+    </div>
+    <p>各機構から要求された部品を、板厚と材質ごとにまとめて管理します。区画の「未加工をすべて選択」で同じ板材から切る部品をまとめて選び、不要なものを外してCAMを一括で保存できます。</p>
+  </header>
+
+  <div id="notice" class="notice" hidden></div>
+  <p class="msg booting-only" role="status">読み込み中…</p>
+
+  <section class="panel gate" id="gate" hidden>
+    <form id="gate-pass" autocomplete="off" hidden>
+      <h2>合言葉を入力してください</h2>
+      <p>部員に共有されている合言葉です。一度入力すると、このブラウザに記憶します。</p>
+      <div class="field"><label for="g-pass">合言葉</label><input id="g-pass" type="password" required></div>
+      <div class="form-actions">
+        <button class="btn primary" id="g-pass-submit" type="submit">入る</button>
+        <span class="msg" id="g-pass-msg" role="status" aria-live="polite"></span>
+      </div>
+    </form>
+    <form id="gate-name" autocomplete="off" hidden>
+      <h2>あなたの名前を選んでください</h2>
+      <p>加工済みにした人・登録した人を記録するために使います。選んだ名前はこのブラウザに記憶します。</p>
+      <p id="g-name-empty" hidden>メンバーがまだ登録されていません。管理者が「CNC加工タスク」スプレッドシートの members シートに名前を追加すると選べるようになります。</p>
+      <div class="field" id="g-name-field"><label for="g-name">名前</label><select id="g-name" required></select></div>
+      <div class="form-actions">
+        <button class="btn primary" id="g-name-submit" type="submit">この名前で使う</button>
+        <button class="btn" id="g-name-cancel" type="button" hidden>キャンセル</button>
+        <span class="msg">一覧に名前が無いときは、管理者に追加を頼んでください。</span>
+      </div>
+    </form>
+  </section>
+
+  <section class="summary app-only" aria-label="全体の進捗">
+    <div class="stats">
+      <div class="stat todo"><span class="lbl">未加工</span><span class="num" id="s-todo">0<small>点 / 0個</small></span></div>
+      <div class="stat done"><span class="lbl">加工済み</span><span class="num" id="s-done">0<small>点 / 0個</small></span></div>
+      <div class="stat"><span class="lbl">進捗（数量ベース）</span><span class="num" id="s-pct">0<small>%</small></span></div>
+    </div>
+    <div class="bar" aria-hidden="true"><i id="s-bar"></i></div>
+  </section>
+
+  <details class="panel app-only" id="add-panel" open>
+    <summary>部品を追加</summary>
+    <form class="add" id="add-form" autocomplete="off" novalidate>
+      <div class="field wide"><label for="f-name">部品名</label><input id="f-name" required maxlength="80" placeholder="例: ステアリングブラケット"></div>
+      <div class="field"><label for="f-t">板厚 (mm)</label><input id="f-t" class="mono" required type="number" inputmode="decimal" step="0.5" min="0" max="200" placeholder="例: 5"></div>
+      <div class="field"><label for="f-mat">材質</label><input id="f-mat" list="mat-list" maxlength="30" placeholder="例: A5052"></div>
+      <div class="field"><label for="f-qty">数量</label><input id="f-qty" class="mono" required type="number" inputmode="numeric" step="1" min="1" max="999" value="1"></div>
+      <div class="field"><label for="f-mech">要求元の機構</label><input id="f-mech" list="mech-list" maxlength="40" placeholder="例: 足回り"></div>
+      <div class="field wide"><label for="f-note">備考</label><input id="f-note" maxlength="200" placeholder="例: 穴径は図面の公差どおり"></div>
+      <div class="field wide" id="f-files-wrap"><label for="f-files">CAM・CADファイル（任意・複数可・1ファイル20MBまで）</label><input id="f-files" type="file" multiple></div>
+      <div class="form-actions">
+        <button class="btn primary" id="f-submit" type="submit">追加する</button>
+        <span class="msg" id="f-msg" role="status" aria-live="polite"></span>
+      </div>
+      <datalist id="mat-list"></datalist>
+      <datalist id="mech-list"></datalist>
+    </form>
+  </details>
+
+  <div class="toolbar app-only">
+    <div class="tabs" role="group" aria-label="表示する状態">
+      <button type="button" data-view="all" aria-pressed="true">すべて<span class="n" id="n-all">0</span></button>
+      <button type="button" data-view="todo" aria-pressed="false">未加工<span class="n" id="n-todo">0</span></button>
+      <button type="button" data-view="done" aria-pressed="false">加工済み<span class="n" id="n-done">0</span></button>
+    </div>
+    <div class="mech"><label for="mech-filter">機構</label>
+      <select id="mech-filter"><option value="">すべての機構</option></select>
+    </div>
+  </div>
+
+  <main class="groups app-only" id="groups" aria-live="polite"></main>
+</div>
+
+<div class="dock" id="dock">
+<div class="jobs" id="jobs" aria-live="polite"></div>
+<div class="actionbar" id="actionbar" hidden>
+  <div class="in">
+    <div class="ab-info"><strong id="ab-count">0点を選択中</strong><span id="ab-detail"></span></div>
+    <div class="ab-btns">
+      <button class="btn primary" id="ab-zip" type="button">CAMをzipで保存</button>
+      <button class="btn" id="ab-done" type="button">加工済みにする</button>
+      <button class="btn" id="ab-clear" type="button">選択を解除</button>
+    </div>
+  </div>
+</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>window.CNC_API_URL = "https://script.google.com/macros/s/AKfycbzG0rqrxeCfHqBO56nabBBjuAPPg1CUwbHo9tm_4wfaStB5TYClO_L_YvzGN9crI0bz/exec";</script>
+<script>
+(function () {
+  var NO_MAT = "材質未設定";
+  var MAX_BYTES = 20 * 1024 * 1024;
+  var STATUS_CHUNK = 5;   /* 一括の加工済み: 1回の呼び出しで送る件数（ロックを長く持たないため） */
+  var FETCH_PARALLEL = 4; /* zip 作成: 同時に取得するファイル数 */
+  var POLL_MS = 30000;
+  /* 拡張子 → MIME。ドライブにはバイト列をそのまま保存する（変換しない） */
+  var MIME = {
+    pdf: "application/pdf", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp",
+    svg: "image/svg+xml", txt: "text/plain", csv: "text/csv", zip: "application/zip", dxf: "image/vnd.dxf",
+    step: "model/step", stp: "model/step", stl: "model/stl"
+  };
+
+  var parts = [], cams = [], members = [], rev = null;
+  var view = "all";
+  var mechFilter = "";
+  var token = "", me = "";
+  var ready = false, gate = null;
+  var busy = {}, camBusy = {}, saving = {};
+  var sel = new Set();
+  var zipping = false, zipLabel = "", marking = false;
+  var dateFmt = new Intl.DateTimeFormat("ja-JP", { month: "numeric", day: "numeric" });
+
+  function $(id) { return document.getElementById(id); }
+  function h(tag, attrs) {
+    var el = document.createElement(tag);
+    if (attrs) Object.keys(attrs).forEach(function (k) {
+      var v = attrs[k];
+      if (v === false || v == null) return;
+      if (k === "class") el.className = v;
+      else if (k.slice(0, 2) === "on") el.addEventListener(k.slice(2), v);
+      else if (k === "disabled" || k === "checked" || k === "indeterminate") el[k] = !!v;
+      else if (v === true) el.setAttribute(k, "");
+      else el.setAttribute(k, v);
+    });
+    for (var i = 2; i < arguments.length; i++) {
+      var c = arguments[i];
+      if (c == null || c === false) continue;
+      if (Array.isArray(c)) { c.forEach(function (x) { if (x) el.appendChild(x); }); continue; }
+      el.appendChild(typeof c === "string" || typeof c === "number" ? document.createTextNode(String(c)) : c);
+    }
+    return el;
+  }
+  function fmtSize(n) { if (!n) return ""; if (n < 1024) return n + " B"; if (n < 1048576) return (n / 1024).toFixed(1) + " KB"; return (n / 1048576).toFixed(1) + " MB"; }
+  function extOf(name) { var m = /\.([^.\/\\]+)$/.exec(String(name).toLowerCase()); return m ? m[1] : ""; }
+  function fmtT(t) { return String(Math.round(t * 1000) / 1000); }
+  function tKey(t) { return String(Math.round(t * 1000) / 1000); }
+  function matOf(p) { return (p.material || "").trim() || NO_MAT; }
+  function safe(s) { return String(s || "").replace(/[\\\/:*?"<>|\u0000-\u001f]/g, "_").replace(/\s+/g, " ").trim().slice(0, 80) || "_"; }
+  /* ファイル名用: 長いときも拡張子を残す */
+  function safeFile(s) {
+    s = String(s || "").replace(/[\\\/:*?"<>|\u0000-\u001f]/g, "_").replace(/\s+/g, " ").trim();
+    if (s.length > 150) { var m = /\.[^.]{1,10}$/.exec(s), ext = m ? m[0] : ""; s = s.slice(0, 150 - ext.length).trim() + ext; }
+    return s || "_";
+  }
+  function say(el, text, isErr) { el.textContent = text; el.className = "msg" + (isErr ? " err" : ""); }
+  var noticeTimer = null;
+  function showNotice(text, sticky) {
+    var n = $("notice"); n.textContent = text; n.hidden = false;
+    clearTimeout(noticeTimer);
+    if (!sticky) noticeTimer = setTimeout(function () { n.hidden = true; }, 9000);
+  }
+  function twoStep(btn, label, armedLabel, action) {
+    var armed = false, timer = null;
+    btn.textContent = label;
+    btn.addEventListener("click", function () {
+      if (!armed) {
+        armed = true; btn.textContent = typeof armedLabel === "function" ? armedLabel() : armedLabel; btn.classList.add("armed");
+        timer = setTimeout(function () { armed = false; btn.textContent = label; btn.classList.remove("armed"); }, 3500);
+      } else { clearTimeout(timer); armed = false; btn.textContent = label; btn.classList.remove("armed"); action(); }
+    });
+    return btn;
+  }
+
+  /* ---------- localStorage（使えなくても動くように） ---------- */
+  function load(k) { try { return localStorage.getItem(k) || ""; } catch (e) { return ""; } }
+  function store(k, v) { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch (e) {} }
+
+  /* ---------- サーバー呼び出し ---------- */
+  /* 外部に置いた画面では window.CNC_API_URL（Web アプリの /exec）へ fetch で送る。
+     Google のログイン情報（Cookie）は付けない。Apps Script の画面として開いたときは google.script.run を使う。 */
+  var API_URL = window.CNC_API_URL || "";
+  function call(name) {
+    var args = Array.prototype.slice.call(arguments, 1);
+    if (API_URL) {
+      return fetch(API_URL, {
+        method: "POST", body: JSON.stringify({ fn: name, args: args }),
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        credentials: "omit", cache: "no-store", redirect: "follow"
+      }).then(function (r) {
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.json();
+      }).then(function (j) {
+        if (!j || !j.ok) throw new Error((j && j.error) || "応答が正しくありません。");
+        return j.result;
+      });
+    }
+    return new Promise(function (resolve, reject) {
+      var r = google.script.run.withSuccessHandler(resolve).withFailureHandler(reject);
+      r[name].apply(r, args);
+    });
+  }
+  function cleanMsg(e) { return String((e && e.message) || e || "").replace(/^(Exception|Error|ScriptError)\s*:\s*/i, "").trim(); }
+  /* サーバーが投げた日本語のメッセージはそのまま出す。それ以外（通信エラーなど）は fallback */
+  function errText(e, fallback) {
+    var m = cleanMsg(e);
+    return /[぀-ヿ一-鿿]/.test(m) ? m : (fallback || "保存できませんでした。通信状況を確認してもう一度お試しください。");
+  }
+  function handleErr(e, fallback) {
+    var m = cleanMsg(e);
+    if (m.indexOf("合言葉") >= 0) { token = ""; store("cnc-token", ""); showGate("pass"); return; }
+    if (m.indexOf("名前を選び直して") >= 0) { setMe(""); showGate("name"); }
+    showNotice(errText(e, fallback));
+  }
+
+  /* ---------- 最新状態の取得（§6） ---------- */
+  var refreshing = null, refreshAgain = false;
+  function refresh() {
+    if (refreshing) { refreshAgain = true; return refreshing; }
+    refreshing = call("api_getState", token).then(applyState, function (e) {
+      handleErr(e, "最新の状態を読み込めませんでした。通信状況を確認してください。");
+    }).then(function () {
+      refreshing = null;
+      if (refreshAgain) { refreshAgain = false; return refresh(); }
+    });
+    return refreshing;
+  }
+  function applyState(s) {
+    rev = s.rev; parts = s.parts; cams = s.files;
+    var sig = s.members.join("\n"), changed = sig !== members.join("\n");
+    members = s.members;
+    ready = true;
+    document.body.classList.remove("booting");
+    if (gate === "pass") hideGate();
+    if (!me || members.indexOf(me) < 0) {
+      if (me) setMe("");
+      if (gate !== "name") showGate("name"); else if (changed) fillNames();
+    } else if (gate === "name" && changed) fillNames();
+    render();
+  }
+  function checkRev() {
+    if (!ready || gate === "pass" || refreshing) return;
+    call("api_getRev", token).then(function (r) { if (r !== rev) refresh(); }, function (e) {
+      if (cleanMsg(e).indexOf("合言葉") >= 0) handleErr(e); /* 合言葉が変わったとき。通信エラーは次の回に任せる */
+    });
+  }
+
+  /* ---------- 名前と合言葉（§7） ---------- */
+  function setMe(name) {
+    me = name; store("cnc-name", name);
+    $("me").hidden = !name;
+    $("me-name").textContent = name;
+  }
+  function fillNames() {
+    var s = $("g-name"), cur = s.value || me;
+    s.textContent = "";
+    s.appendChild(h("option", { value: "" }, "選んでください"));
+    members.forEach(function (m) { s.appendChild(h("option", { value: m }, m)); });
+    s.value = members.indexOf(cur) >= 0 ? cur : "";
+    $("g-name-empty").hidden = members.length > 0;
+    $("g-name-field").hidden = !members.length;
+    $("g-name-submit").disabled = !members.length;
+  }
+  function showGate(kind) {
+    gate = kind;
+    document.body.classList.add("gated");
+    document.body.classList.remove("booting");
+    $("gate").hidden = false;
+    $("gate-pass").hidden = kind !== "pass";
+    $("gate-name").hidden = kind !== "name";
+    if (kind === "name") { fillNames(); $("g-name-cancel").hidden = !(me && members.indexOf(me) >= 0); }
+    updateBar();
+  }
+  function hideGate() {
+    gate = null;
+    document.body.classList.remove("gated");
+    $("gate").hidden = true;
+    updateBar();
+  }
+  $("gate-pass").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var cand = $("g-pass").value, btn = $("g-pass-submit"), msg = $("g-pass-msg");
+    if (!cand) return;
+    btn.disabled = true; say(msg, "確認しています…");
+    call("api_getState", cand).then(function (s) {
+      token = cand; store("cnc-token", cand);
+      $("g-pass").value = ""; say(msg, "");
+      applyState(s);
+    }, function (err) {
+      say(msg, cleanMsg(err).indexOf("合言葉") >= 0 ? "合言葉が違います。" : errText(err, "確認できませんでした。通信状況を確認してもう一度お試しください。"), true);
+    }).then(function () { btn.disabled = false; });
+  });
+  $("gate-name").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var v = $("g-name").value;
+    if (!v) return;
+    setMe(v); hideGate(); render();
+  });
+  $("g-name-cancel").addEventListener("click", function () { hideGate(); });
+  $("me-change").addEventListener("click", function () { showGate("name"); });
+
+  /* ---------- base64 ---------- */
+  function fileToB64(f) {
+    return new Promise(function (resolve, reject) {
+      var fr = new FileReader();
+      fr.onload = function () { var s = String(fr.result); resolve(s.slice(s.indexOf(",") + 1)); };
+      fr.onerror = function () { reject(fr.error); };
+      fr.readAsDataURL(f);
+    });
+  }
+  function b64ToBytes(b64) {
+    var bin = atob(b64.replace(/\s+/g, "")), u8 = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    return u8;
+  }
+  /* 元のファイルのバイト列を取り出す */
+  function fetchCamBytes(c) {
+    return call("api_getFile", token, c.id).then(function (r) { return b64ToBytes(r.base64); });
+  }
+  /* Blob URL + <a download> で保存（HtmlService の iframe で動くことを確認済み） */
+  function saveBlob(blob, name) {
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+  }
+
+  /* ---------- 部品の読み書き ---------- */
+  function setStatus(p, status) {
+    if (busy[p.id]) return Promise.resolve();
+    busy[p.id] = true; render();
+    return call("api_setStatus", token, [p.id], status, me).catch(function (e) { handleErr(e); })
+      .then(refresh)
+      .then(function () { delete busy[p.id]; render(); });
+  }
+  function remove(p) {
+    if (busy[p.id]) return;
+    busy[p.id] = true; render();
+    call("api_deletePart", token, p.id)
+      .then(function () { sel.delete(p.id); })
+      .catch(function (e) { handleErr(e); })
+      .then(refresh)
+      .then(function () { delete busy[p.id]; render(); });
+  }
+
+  /* ---------- CAMファイル ---------- */
+  function pickCam(p) {
+    var inp = document.createElement("input");
+    inp.type = "file"; inp.multiple = true;
+    inp.addEventListener("change", function () {
+      var fs = Array.prototype.slice.call(inp.files || []);
+      if (fs.length) uploadCam(p, fs);
+    });
+    inp.click();
+  }
+  function uploadOne(p, f) {
+    if (f.size > MAX_BYTES) return Promise.reject(new Error("ファイルが大きすぎます。1ファイル20MBまでです。"));
+    return fileToB64(f).then(function (b64) {
+      return call("api_uploadFile", token, p.id, f.name, MIME[extOf(f.name)] || "application/octet-stream", b64, me);
+    });
+  }
+  /* 1ファイルずつ順番に送る */
+  function uploadCam(p, files) {
+    if (camBusy[p.id]) return;
+    camBusy[p.id] = true; render();
+    var chain = Promise.resolve();
+    files.forEach(function (f) {
+      chain = chain.then(function () { return uploadOne(p, f); })
+        .catch(function (e) {
+          var m = cleanMsg(e);
+          if (m.indexOf("合言葉") >= 0 || m.indexOf("名前を選び直して") >= 0) handleErr(e);
+          else showNotice(f.name + "：" + errText(e, "アップロードできませんでした。もう一度お試しください。"));
+        });
+    });
+    chain.then(refresh).then(function () { delete camBusy[p.id]; render(); });
+  }
+  function removeCam(c) {
+    camBusy[c.partId] = true; render();
+    call("api_deleteFile", token, c.id)
+      .catch(function (e) { handleErr(e); })
+      .then(refresh)
+      .then(function () { delete camBusy[c.partId]; render(); });
+  }
+  function saveCam(c) {
+    if (saving[c.id]) return;
+    saving[c.id] = true; render();
+    fetchCamBytes(c).then(function (bytes) {
+      saveBlob(new Blob([bytes], { type: "application/octet-stream" }), safeFile(c.name));
+    }).catch(function (e) { handleErr(e, "保存できませんでした。もう一度お試しください。"); })
+      .then(function () { delete saving[c.id]; render(); });
+  }
+  function camsOf(pid) {
+    return cams.filter(function (c) { return c.partId === pid; }).sort(function (a, b) { return (a.uploadedAt || 0) - (b.uploadedAt || 0); });
+  }
+  function camBlock(p) {
+    var files = camsOf(p.id);
+    var box = h("div", { class: "cam" });
+    files.forEach(function (c) {
+      var ext = extOf(c.name);
+      var line = h("div", { class: "cam-file" }, ext ? h("span", { class: "kind" }, ext) : null, h("span", { class: "fname" }, c.name), h("span", { class: "sz" }, fmtSize(c.size)));
+      line.appendChild(h("button", { class: "linkbtn", type: "button", disabled: !!saving[c.id], onclick: function () { saveCam(c); } }, saving[c.id] ? "取得中…" : "保存"));
+      var d = h("button", { class: "linkbtn", type: "button", disabled: !!camBusy[p.id] });
+      twoStep(d, "削除", "削除する？", function () { removeCam(c); });
+      line.appendChild(d);
+      box.appendChild(line);
+    });
+    if (!files.length && p.status !== "done") box.appendChild(h("span", { class: "cam-none" }, "CAM未添付"));
+    box.appendChild(h("div", null, h("button", { class: "linkbtn", type: "button", disabled: !!camBusy[p.id], onclick: function () { pickCam(p); } }, camBusy[p.id] ? "アップロード中…" : "＋ CAMファイルを添付（この行にドラッグでも可）")));
+    return box;
+  }
+
+  /* ---------- 一括選択とzip ---------- */
+  function selectedParts() { return parts.filter(function (p) { return sel.has(p.id); }); }
+  function togglePick(p, on) { if (on) sel.add(p.id); else sel.delete(p.id); render(); }
+  function toggleGroup(items, on) { items.forEach(function (p) { if (on) sel.add(p.id); else sel.delete(p.id); }); render(); }
+
+  function csvCell(v) { v = v == null ? "" : String(v); return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
+
+  /* tasks を最大 n 件ずつ並行して実行する（各 task は失敗しても resolve すること） */
+  function runPool(tasks, n, onProgress) {
+    return new Promise(function (resolve) {
+      var next = 0, active = 0, finished = 0;
+      if (!tasks.length) { resolve(); return; }
+      function launch() {
+        while (active < n && next < tasks.length) {
+          active++;
+          tasks[next++]().then(done, done);
+        }
+      }
+      function done() {
+        active--; finished++;
+        onProgress(finished, tasks.length);
+        if (finished === tasks.length) resolve(); else launch();
+      }
+      launch();
+    });
+  }
+
+  function zipSelected() {
+    if (zipping) return;
+    var list = selectedParts();
+    if (!list.length) return;
+    if (typeof JSZip === "undefined") { showNotice("zip作成用の部品を読み込めませんでした。ページを開き直してください。"); return; }
+    zipping = true; zipLabel = ""; updateBar();
+    var z = new JSZip();
+    var rows = [["板厚(mm)", "材質", "部品名", "数量", "機構", "備考", "CAMファイル"]];
+    var noCam = [], failed = [], jobs = [];
+    var groups = unique(list.map(function (p) { return tKey(p.thickness) + "|" + matOf(p); }));
+    list.sort(function (a, b) { return a.thickness - b.thickness || matOf(a).localeCompare(matOf(b), "ja") || String(a.name).localeCompare(String(b.name), "ja"); })
+      .forEach(function (p) {
+        var dir = "t" + fmtT(p.thickness) + "mm_" + safe(matOf(p)) + "/" + safe(p.name) + "_x" + (p.qty || 1) + (p.mechanism ? "_" + safe(p.mechanism) : "") + "/";
+        var files = camsOf(p.id);
+        rows.push([fmtT(p.thickness), matOf(p), p.name, p.qty || 1, p.mechanism || "", p.note || "", files.map(function (c) { return c.name; }).join(" / ")]);
+        if (!files.length) noCam.push(p.name);
+        var used = {};
+        files.forEach(function (c) {
+          var fn = safeFile(c.name); var base = fn, n = 2;
+          while (used[fn]) { fn = base.replace(/(\.[^.]+)?$/, "_" + n++ + "$1"); }
+          used[fn] = 1;
+          jobs.push(function () {
+            return fetchCamBytes(c).then(function (b) { z.file(dir + fn, b); })
+              .catch(function () { failed.push(p.name + "（" + c.name + "）"); });
+          });
+        });
+      });
+    if (jobs.length) { zipLabel = "0/" + jobs.length + " 件取得中…"; updateBar(); }
+    runPool(jobs, FETCH_PARALLEL, function (k, total) { zipLabel = k + "/" + total + " 件取得中…"; updateBar(); }).then(function () {
+      zipLabel = "zipを作成中…"; updateBar();
+      z.file("加工リスト.csv", "﻿" + rows.map(function (r) { return r.map(csvCell).join(","); }).join("\r\n"));
+      return z.generateAsync({ type: "blob", compression: "DEFLATE", compressionOptions: { level: 6 } });
+    }).then(function (blob) {
+      var d = new Date(), stamp = d.getFullYear() + String(d.getMonth() + 1).padStart(2, "0") + String(d.getDate()).padStart(2, "0");
+      var label = groups.length === 1 ? "_t" + fmtT(parseFloat(groups[0].split("|")[0])) + "mm_" + safe(groups[0].split("|")[1]) : "_" + groups.length + "区画";
+      saveBlob(blob, "CNC" + label + "_" + list.length + "点_" + stamp + ".zip");
+      var m = "保存しました。";
+      if (failed.length) m += "取得できなかったファイル: " + failed.join("、") + "。";
+      m += noCam.length ? "CAMが無い部品: " + noCam.join("、") + "（加工リスト.csv には含めています）" : "zip内の「加工リスト.csv」に数量と機構をまとめています。";
+      showNotice(m, failed.length > 0);
+    }).catch(function () { showNotice("zipを作成できませんでした。もう一度お試しください。"); })
+      .then(function () { zipping = false; zipLabel = ""; updateBar(); });
+  }
+  function markSelectedDone() {
+    if (marking) return;
+    var list = selectedParts().filter(function (p) { return p.status !== "done"; });
+    if (!list.length) return;
+    marking = true;
+    list.forEach(function (p) { busy[p.id] = true; });
+    render();
+    var chain = Promise.resolve(), ok = true;
+    for (var i = 0; i < list.length; i += STATUS_CHUNK) {
+      (function (ids) {
+        chain = chain.then(function () {
+          if (!ok) return;
+          return call("api_setStatus", token, ids, "done", me).catch(function (e) { ok = false; handleErr(e); });
+        });
+      })(list.slice(i, i + STATUS_CHUNK).map(function (p) { return p.id; }));
+    }
+    chain.then(refresh).then(function () {
+      list.forEach(function (p) { delete busy[p.id]; });
+      marking = false;
+      render();
+    });
+  }
+  function updateBar() {
+    var list = gate ? [] : selectedParts();
+    var bar = $("actionbar");
+    bar.hidden = !list.length;
+    fitDock();
+    if (!list.length) return;
+    var nCam = 0, noCam = 0;
+    list.forEach(function (p) { var k = camsOf(p.id).length; nCam += k; if (!k) noCam++; });
+    var nGroups = unique(list.map(function (p) { return tKey(p.thickness) + "|" + matOf(p); })).length;
+    $("ab-count").textContent = list.length + "点を選択中（計" + sumQty(list) + "個）";
+    $("ab-detail").textContent = nGroups + "区画 · CAM " + nCam + "件" + (noCam ? " · CAMなし " + noCam + "点" : "");
+    $("ab-zip").disabled = zipping;
+    $("ab-zip").textContent = zipping ? (zipLabel || "zipを作成中…") : "CAMをzipで保存";
+    $("ab-done").disabled = marking;
+  }
+
+  /* ---------- 描画 ---------- */
+  function sumQty(list) { return list.reduce(function (s, p) { return s + (p.qty || 0); }, 0); }
+  function unique(list) { return Array.from(new Set(list.filter(Boolean))); }
+
+  function syncOptions() {
+    var mechs = unique(parts.map(function (p) { return p.mechanism; })).sort();
+    var s = $("mech-filter");
+    var sig = mechs.join("|");
+    if (s.dataset.sig !== sig) {
+      s.dataset.sig = sig;
+      s.textContent = "";
+      s.appendChild(h("option", { value: "" }, "すべての機構"));
+      mechs.forEach(function (m) { s.appendChild(h("option", { value: m }, m)); });
+      if (mechs.indexOf(mechFilter) < 0) mechFilter = "";
+      s.value = mechFilter;
+    }
+    var ml = $("mech-list"); ml.textContent = "";
+    mechs.forEach(function (m) { ml.appendChild(h("option", { value: m })); });
+    var mt = $("mat-list"); mt.textContent = "";
+    unique(parts.map(function (p) { return (p.material || "").trim(); })).sort(function (a, b) { return a.localeCompare(b, "ja"); })
+      .forEach(function (m) { mt.appendChild(h("option", { value: m })); });
+  }
+
+  function partRow(p) {
+    var done = p.status === "done";
+    var off = !!busy[p.id];
+    var addedLine = p.createdBy ? p.createdBy + " · " + (p.createdAt ? dateFmt.format(new Date(p.createdAt)) + " に登録" : "登録") : "";
+    var doneLine = done ? (p.doneBy ? p.doneBy + " · " : "") + (p.doneAt ? dateFmt.format(new Date(p.doneAt)) + " に加工済み" : "加工済み") : "";
+    var del = h("button", { class: "del", type: "button", disabled: off });
+    twoStep(del, "削除", "削除する？", function () { remove(p); });
+    var picked = sel.has(p.id);
+    var pick = done ? h("span", { class: "pick-cell" })
+      : h("label", { class: "pick-cell" }, h("input", { type: "checkbox", id: "pick-" + p.id, checked: picked, "aria-label": "選択: " + p.name, onchange: function (e) { togglePick(p, e.target.checked); } }));
+    var depth = 0;
+    function hasFiles(e) { return e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types, "Files") >= 0; }
+    return h("li", {
+        class: "part" + (done ? " is-done" : "") + (picked ? " picked" : ""),
+        ondragenter: function (e) { if (hasFiles(e)) { e.preventDefault(); depth++; e.currentTarget.classList.add("dropping"); } },
+        ondragover: function (e) { if (hasFiles(e)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } },
+        ondragleave: function (e) { if (--depth <= 0) { depth = 0; e.currentTarget.classList.remove("dropping"); } },
+        ondrop: function (e) {
+          e.preventDefault(); depth = 0; e.currentTarget.classList.remove("dropping");
+          var fs = Array.prototype.slice.call((e.dataTransfer && e.dataTransfer.files) || []);
+          if (fs.length && !camBusy[p.id]) uploadCam(p, fs);
+        }
+      },
+      pick,
+      h("button", { class: "check", type: "button", "aria-pressed": String(done), title: done ? "未加工に戻す" : "加工済みにする", "aria-label": (done ? "未加工に戻す: " : "加工済みにする: ") + p.name, disabled: off, onclick: function () { setStatus(p, done ? "todo" : "done"); } }),
+      h("div", { class: "p-main" },
+        h("span", { class: "p-name" }, p.name),
+        h("span", { class: "p-meta" },
+          p.mechanism ? h("span", null, p.mechanism) : null,
+          h("span", { class: "qty" }, "×" + (p.qty || 1))),
+        p.note ? h("span", { class: "p-note" }, p.note) : null,
+        addedLine ? h("span", { class: "p-by" }, addedLine) : null,
+        done ? h("span", { class: "p-done" }, doneLine) : null,
+        camBlock(p)),
+      del);
+  }
+
+  function render() {
+    syncOptions();
+    /* 加工済みになった・消えた部品は選択から外す */
+    var todoIds = new Set(parts.filter(function (p) { return p.status !== "done"; }).map(function (p) { return p.id; }));
+    sel.forEach(function (id) { if (!todoIds.has(id)) sel.delete(id); });
+
+    var scoped = parts.filter(function (p) { return !mechFilter || p.mechanism === mechFilter; });
+    var todo = scoped.filter(function (p) { return p.status !== "done"; });
+    var done = scoped.filter(function (p) { return p.status === "done"; });
+    var tq = sumQty(todo), dq = sumQty(done), total = tq + dq;
+    $("s-todo").textContent = ""; $("s-done").textContent = ""; $("s-pct").textContent = "";
+    $("s-todo").append(String(todo.length), h("small", null, "点 / " + tq + "個"));
+    $("s-done").append(String(done.length), h("small", null, "点 / " + dq + "個"));
+    var pct = total ? Math.round(dq / total * 100) : 0;
+    $("s-pct").append(String(pct), h("small", null, "%"));
+    $("s-bar").style.width = pct + "%";
+    $("n-all").textContent = scoped.length; $("n-todo").textContent = todo.length; $("n-done").textContent = done.length;
+    Array.prototype.forEach.call(document.querySelectorAll(".tabs button"), function (b) { b.setAttribute("aria-pressed", String(b.dataset.view === view)); });
+    updateBar();
+
+    var root = $("groups"); root.textContent = "";
+    if (!ready) return;
+    if (!parts.length) {
+      root.appendChild(h("div", { class: "empty" },
+        h("strong", null, "まだ加工する部品がありません"),
+        h("span", null, "上の「部品を追加」から、機構ごとに必要な部品を板厚と材質つきで登録してください。同じ板厚・材質の部品が1つの区画にまとまります。"),
+        h("span", null, "登録後、各部品にCAMファイルを添付できます。")));
+      return;
+    }
+    var byG = {};
+    scoped.forEach(function (p) { var k = tKey(p.thickness) + "|" + matOf(p); (byG[k] = byG[k] || []).push(p); });
+    var keys = Object.keys(byG).sort(function (a, b) {
+      var A = a.split("|"), B = b.split("|");
+      return parseFloat(A[0]) - parseFloat(B[0]) || (A[1] === NO_MAT) - (B[1] === NO_MAT) || A[1].localeCompare(B[1], "ja");
+    });
+    var shown = 0;
+    keys.forEach(function (k) {
+      var items = byG[k], t = parseFloat(k.split("|")[0]), mat = k.split("|")[1];
+      var gt = items.filter(function (p) { return p.status !== "done"; }).sort(function (a, b) { return (a.createdAt || 0) - (b.createdAt || 0); });
+      var gd = items.filter(function (p) { return p.status === "done"; }).sort(function (a, b) { return (b.doneAt || 0) - (a.doneAt || 0); });
+      var showT = view !== "done" && gt.length, showD = view !== "todo" && gd.length;
+      if (!showT && !showD) return;
+      shown++;
+      var nSel = gt.filter(function (p) { return sel.has(p.id); }).length;
+      var head = h("div", { class: "g-head" },
+        h("div", { class: "t" }, h("span", { class: "t-lbl" }, "板厚"), fmtT(t), h("small", null, "mm")),
+        h("span", { class: "g-mat" + (mat === NO_MAT ? " none" : "") }, mat),
+        h("div", { class: "g-meta" },
+          h("span", { class: "pill todo" }, "未加工 " + gt.length + "点/" + sumQty(gt) + "個"),
+          h("span", { class: "pill done" }, "加工済み " + gd.length + "点/" + sumQty(gd) + "個")));
+      if (showT) {
+        var gid = "gpick-" + k.replace(/[^\w.-]/g, "_");
+        head.appendChild(h("label", { class: "g-pick", for: gid },
+          h("input", { type: "checkbox", id: gid, checked: nSel === gt.length, indeterminate: nSel > 0 && nSel < gt.length, onchange: function (e) { toggleGroup(gt, e.target.checked); } }),
+          nSel ? nSel + "/" + gt.length + " 選択中" : "未加工をすべて選択"));
+      }
+      var g = h("section", { class: "group", "aria-label": "板厚 " + fmtT(t) + " mm " + mat }, head);
+      if (showT) {
+        g.appendChild(h("div", { class: "sub todo" }, h("span", null, "未加工"), h("span", null, gt.length + "点")));
+        g.appendChild(h("ul", { class: "parts" }, gt.map(partRow)));
+      }
+      if (showD) {
+        g.appendChild(h("div", { class: "sub done" }, h("span", null, "加工済み"), h("span", null, gd.length + "点")));
+        g.appendChild(h("ul", { class: "parts" }, gd.map(partRow)));
+      }
+      root.appendChild(g);
+    });
+    if (!shown) {
+      root.appendChild(h("div", { class: "empty" },
+        h("strong", null, view === "todo" ? "未加工の部品はありません" : view === "done" ? "加工済みの部品はまだありません" : "この条件に合う部品はありません"),
+        h("span", null, view === "todo" ? "すべて加工済みです。" : "表示する状態や機構を切り替えてください。")));
+    }
+  }
+
+  /* ---------- イベント ---------- */
+  Array.prototype.forEach.call(document.querySelectorAll(".tabs button"), function (b) {
+    b.addEventListener("click", function () {
+      view = b.dataset.view;
+      store("cnc-view", view);
+      render();
+    });
+  });
+  $("mech-filter").addEventListener("change", function (e) { mechFilter = e.target.value; render(); });
+  $("ab-zip").addEventListener("click", zipSelected);
+  $("ab-clear").addEventListener("click", function () { sel.clear(); render(); });
+  twoStep($("ab-done"), "加工済みにする", function () { return selectedParts().length + "点を加工済みにする？"; }, markSelectedDone);
+
+  /* ---------- 部品の追加（画面下に状況を出し、待たずに次を入力できる） ---------- */
+  var jobs = [], jobSeq = 0, jobRunning = false;
+  function fitDock() {
+    var hgt = $("dock").offsetHeight;
+    document.querySelector(".wrap").style.paddingBottom = (hgt ? hgt + 24 : 56) + "px";
+  }
+  function renderJobs() {
+    var box = $("jobs"); box.textContent = "";
+    jobs.forEach(function (j) {
+      var row = h("div", { class: "job " + j.state }, h("span", { class: "txt" }, j.text));
+      if (j.state === "error") {
+        row.appendChild(h("span", { class: "btns" },
+          h("button", { class: "btn small primary", type: "button", onclick: function () { j.state = "wait"; j.text = "「" + j.part.name + "」をやり直します…"; renderJobs(); pump(); } }, "やり直す"),
+          h("button", { class: "btn small", type: "button", onclick: function () { removeJob(j); } }, "閉じる")));
+      }
+      box.appendChild(row);
+    });
+    fitDock();
+  }
+  function removeJob(j) { jobs = jobs.filter(function (x) { return x !== j; }); renderJobs(); }
+  function setJob(j, state, text) { j.state = state; j.text = text; renderJobs(); }
+  function enqueueAdd(part, files) {
+    var j = { id: ++jobSeq, part: part, files: files, partId: null, state: "wait", text: "「" + part.name + "」を追加待ち…" };
+    jobs.push(j); renderJobs(); pump();
+  }
+  /* 1件ずつ順番に処理する（ロックの取り合いを避けるため） */
+  function pump() {
+    if (jobRunning) return;
+    var j = jobs.filter(function (x) { return x.state === "wait"; })[0];
+    if (!j) return;
+    jobRunning = true;
+    runJob(j).then(function () { jobRunning = false; pump(); });
+  }
+  function gateIfNeeded(e) {
+    var m = cleanMsg(e);
+    if (m.indexOf("合言葉") >= 0 || m.indexOf("名前を選び直して") >= 0) handleErr(e);
+  }
+  function runJob(j) {
+    var name = j.part.name;
+    var step = Promise.resolve();
+    if (!j.partId) {
+      setJob(j, "run", "「" + name + "」を追加しています…");
+      step = call("api_addPart", token, j.part, me).then(function (id) { j.partId = id; return refresh(); });
+    }
+    return step.then(function () {
+      var list = j.files, failed = [];
+      if (!list.length) return failed;
+      camBusy[j.partId] = true; render();
+      var chain = Promise.resolve();
+      list.forEach(function (f, i) {
+        chain = chain.then(function () {
+          setJob(j, "run", "「" + name + "」のファイルをアップロードしています（" + (i + 1) + "/" + list.length + "）…");
+          return uploadOne({ id: j.partId }, f).catch(function (e) { failed.push({ file: f, err: e }); });
+        });
+      });
+      return chain.then(function () { delete camBusy[j.partId]; return refresh(); }).then(function () { return failed; });
+    }).then(function (failed) {
+      if (!failed.length) {
+        var n = j.files.length;
+        setJob(j, "done", "「" + name + "」を 板厚" + fmtT(j.part.thickness) + "mm・" + (j.part.material || NO_MAT) + " に追加しました" + (n ? "（ファイル" + n + "件）" : ""));
+        setTimeout(function () { removeJob(j); }, 4000);
+        return;
+      }
+      j.files = failed.map(function (x) { return x.file; });
+      setJob(j, "error", "「" + name + "」は追加しましたが、ファイル" + failed.length + "件をアップロードできませんでした: " +
+        failed.map(function (x) { return x.file.name + "（" + errText(x.err, "通信エラー") + "）"; }).join("、"));
+      gateIfNeeded(failed[0].err);
+    }, function (e) {
+      setJob(j, "error", "「" + name + "」を追加できませんでした: " + errText(e));
+      gateIfNeeded(e);
+    });
+  }
+  /* 追加の途中でページを閉じようとしたら確認する */
+  window.addEventListener("beforeunload", function (e) {
+    if (jobs.some(function (j) { return j.state === "wait" || j.state === "run"; })) { e.preventDefault(); e.returnValue = ""; }
+  });
+
+  $("add-form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var msg = $("f-msg");
+    if (!ready) { say(msg, "まだ読み込み中です。少し待ってからもう一度お試しください。", true); return; }
+    var name = $("f-name").value.trim();
+    var t = parseFloat($("f-t").value);
+    var qty = Number($("f-qty").value);
+    if (!name) { say(msg, "部品名を入力してください。", true); $("f-name").focus(); return; }
+    if (!(t > 0 && t <= 200)) { say(msg, "板厚は0より大きい数値（mm）で入力してください。", true); $("f-t").focus(); return; }
+    if (!(Number.isInteger(qty) && qty >= 1 && qty <= 999)) { say(msg, "数量は1〜999の整数で入力してください。", true); $("f-qty").focus(); return; }
+    var fi = $("f-files"), fs = Array.prototype.slice.call(fi.files || []);
+    var big = fs.filter(function (f) { return f.size > MAX_BYTES; });
+    if (big.length) { say(msg, "ファイルが大きすぎます（1ファイル20MBまで）: " + big.map(function (f) { return f.name; }).join("、"), true); return; }
+    enqueueAdd({ name: name, thickness: Math.round(t * 1000) / 1000, material: $("f-mat").value.trim(), qty: qty, mechanism: $("f-mech").value.trim(), note: $("f-note").value.trim() }, fs);
+    /* 板厚・材質・機構は続けて同じものを入れることが多いので残す */
+    say(msg, "");
+    $("f-name").value = ""; $("f-note").value = ""; $("f-qty").value = "1"; fi.value = "";
+    $("f-name").focus();
+  });
+
+  /* ---------- 起動 ---------- */
+  var v = load("cnc-view"); if (v === "todo" || v === "done" || v === "all") view = v;
+  token = load("cnc-token");
+  setMe(load("cnc-name"));
+  render();
+  if (typeof JSZip === "undefined") showNotice("zip作成用の部品を読み込めませんでした。ページを開き直してください。");
+  refresh();
+  /* 30秒ごとに rev を確かめ、変わっていれば取り直す。非表示の間は確かめない */
+  setInterval(function () { if (!document.hidden) checkRev(); }, POLL_MS);
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) checkRev(); });
+})();
+</script>
+
+</body>
+</html>
