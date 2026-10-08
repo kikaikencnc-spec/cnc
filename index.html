@@ -413,7 +413,7 @@ form.add { display: flex; flex-direction: column; gap: 18px; }
 </div>
 
 <script async src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script>window.CNC_API_URL = "https://script.google.com/macros/s/AKfycbzG0rqrxeCfHqBO56nabBBjuAPPg1CUwbHo9tm_4wfaStB5TYClO_L_YvzGN9crI0bz/exec"; window.CNC_BUILD = "2026-10-08 23:03:22";</script>
+<script>window.CNC_API_URL = "https://script.google.com/macros/s/AKfycbzG0rqrxeCfHqBO56nabBBjuAPPg1CUwbHo9tm_4wfaStB5TYClO_L_YvzGN9crI0bz/exec"; window.CNC_BUILD = "2026-10-08 23:06:59";</script>
 <script>
 (function () {
   var NO_MAT = "材質未設定";
@@ -912,6 +912,9 @@ form.add { display: flex; flex-direction: column; gap: 18px; }
   }
 
   /* ---------- 一括選択とzip ---------- */
+  var zipArmed = false, zipArmTimer = null;
+  /* 自分以外の人が担当している未加工の部品 */
+  function othersIn(list) { return list.filter(function (p) { return p.status !== "done" && p.assignee && p.assignee !== me; }); }
   function selectedParts() { return parts.filter(function (p) { return sel.has(p.id); }); }
   function togglePick(p, on) { if (on) sel.add(p.id); else sel.delete(p.id); render(); }
   function toggleGroup(items, on) { items.forEach(function (p) { if (on) sel.add(p.id); else sel.delete(p.id); }); render(); }
@@ -1086,9 +1089,11 @@ form.add { display: flex; flex-direction: column; gap: 18px; }
     list.forEach(function (p) { var k = camsOf(p.id).length; nCam += k; if (!k) noCam++; });
     var nGroups = unique(list.map(groupKey)).length;
     $("ab-count").textContent = list.length + "点を選択中（計" + sumQty(list) + "個）";
-    $("ab-detail").textContent = nGroups + "区画 · ファイル " + nCam + "件" + (noCam ? " · ファイルなし " + noCam + "点" : "");
+    var others = othersIn(list).length;
+    $("ab-detail").textContent = nGroups + "区画 · ファイル " + nCam + "件" + (noCam ? " · ファイルなし " + noCam + "点" : "") + (others ? " · 他の人の担当 " + others + "点" : "");
     $("ab-zip").disabled = zipping;
-    $("ab-zip").textContent = zipping ? (zipLabel || "zipを作成中…") : "ファイルをzipでダウンロード";
+    $("ab-zip").textContent = zipping ? (zipLabel || "zipを作成中…") : zipArmed ? "他の人の担当を含みます。ダウンロードする？" : "ファイルをzipでダウンロード";
+    $("ab-zip").classList.toggle("armed", zipArmed && !zipping);
     $("ab-done").disabled = marking;
     var toTake = list.filter(function (p) { return p.assignee !== me; }).length;
     $("ab-assign").hidden = !toTake;
@@ -1380,7 +1385,22 @@ form.add { display: flex; flex-direction: column; gap: 18px; }
   });
   $("mech-filter").addEventListener("change", function (e) { mechFilter = e.target.value; render(); });
   $("who-filter").addEventListener("change", function (e) { whoFilter = e.target.value; render(); });
-  $("ab-zip").addEventListener("click", zipSelected);
+  /* 他の人が担当している部品が含まれていたら、ひとこと断ってから（2回押しで）ダウンロードする */
+  $("ab-zip").addEventListener("click", function () {
+    if (zipping) return;
+    var others = othersIn(selectedParts());
+    if (others.length && !zipArmed) {
+      zipArmed = true;
+      showNotice("他の人が担当している部品が含まれています: " + others.map(function (p) { return "「" + p.name + "」（" + p.assignee + "）"; }).join("、") +
+        "。加工がかぶらないよう、担当の人に声をかけてからダウンロードしてください。");
+      clearTimeout(zipArmTimer);
+      zipArmTimer = setTimeout(function () { zipArmed = false; updateBar(); }, 3500);
+      updateBar();
+      return;
+    }
+    clearTimeout(zipArmTimer); zipArmed = false;
+    zipSelected();
+  });
   $("ab-clear").addEventListener("click", function () { sel.clear(); render(); });
   twoStep($("ab-assign"), "担当する", function () {
     var list = selectedParts().filter(function (p) { return p.assignee !== me; });
