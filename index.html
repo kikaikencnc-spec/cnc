@@ -282,6 +282,7 @@ body:not(.booting) .booting-only { display: none; }
   </div>
 
   <main class="groups app-only" id="groups" aria-live="polite"></main>
+  <p class="msg app-only" id="build-info" hidden></p>
 </div>
 
 <div class="dock" id="dock">
@@ -299,7 +300,7 @@ body:not(.booting) .booting-only { display: none; }
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script>window.CNC_API_URL = "https://script.google.com/macros/s/AKfycbzG0rqrxeCfHqBO56nabBBjuAPPg1CUwbHo9tm_4wfaStB5TYClO_L_YvzGN9crI0bz/exec";</script>
+<script>window.CNC_API_URL = "https://script.google.com/macros/s/AKfycbzG0rqrxeCfHqBO56nabBBjuAPPg1CUwbHo9tm_4wfaStB5TYClO_L_YvzGN9crI0bz/exec"; window.CNC_BUILD = "2026-10-08 20:27:18";</script>
 <script>
 (function () {
   var NO_MAT = "材質未設定";
@@ -977,6 +978,23 @@ body:not(.booting) .booting-only { display: none; }
     $("f-name").focus();
   });
 
+  /* ---------- 新しい版の確認（GitHub Pages は最大10分キャッシュされるため） ---------- */
+  /* 配信元から最新の index.html を取り直して版を比べる。cache: "reload" で取るとブラウザのキャッシュも新しくなる */
+  function checkNewVersion(atStart) {
+    if (!window.CNC_BUILD || !window.fetch) return;
+    fetch(location.href.split("#")[0], { cache: "reload", credentials: "omit" })
+      .then(function (r) { return r.ok ? r.text() : ""; })
+      .then(function (t) {
+        var m = /CNC_BUILD = "([^"]+)"/.exec(t);
+        if (!m || m[1] === window.CNC_BUILD) return;
+        var tried = false;
+        try { tried = sessionStorage.getItem("cnc-reload-for") === m[1]; sessionStorage.setItem("cnc-reload-for", m[1]); } catch (e) {}
+        var working = jobs.some(function (j) { return j.state === "wait" || j.state === "run"; }) || zipping || $("f-name").value;
+        if (atStart && !tried && !working) location.reload();
+        else showNotice("新しい版の画面があります。作業が一段落したらページを再読み込みしてください（Ctrl+F5）。", true);
+      }).catch(function () {});
+  }
+
   /* ---------- 起動 ---------- */
   var v = load("cnc-view"); if (v === "todo" || v === "done" || v === "all") view = v;
   token = load("cnc-token");
@@ -985,7 +1003,14 @@ body:not(.booting) .booting-only { display: none; }
   if (typeof JSZip === "undefined") showNotice("zip作成用の部品を読み込めませんでした。ページを開き直してください。");
   refresh();
   /* 30秒ごとに rev を確かめ、変わっていれば取り直す。非表示の間は確かめない */
-  setInterval(function () { if (!document.hidden) checkRev(); }, POLL_MS);
+  if (window.CNC_BUILD) { $("build-info").textContent = "画面の版: " + window.CNC_BUILD; $("build-info").hidden = false; }
+  checkNewVersion(true);
+  var ticks = 0;
+  setInterval(function () {
+    if (document.hidden) return;
+    checkRev();
+    if (++ticks % 20 === 0) checkNewVersion(false); /* 10分ごと */
+  }, POLL_MS);
   document.addEventListener("visibilitychange", function () { if (!document.hidden) checkRev(); });
 })();
 </script>
