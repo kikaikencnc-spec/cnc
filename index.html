@@ -191,6 +191,30 @@ body:not(.booting) .booting-only { display: none; }
 .proc-pill { font-size: 12px; font-weight: 700; padding: 2px 10px; border-radius: 6px; background: var(--fg); color: var(--bg); white-space: nowrap; }
 .proc-pill.none { background: transparent; color: var(--muted); border: 1px dashed var(--line-strong); }
 .p-proc select { font-size: 12px; padding: 1px 4px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--muted); max-width: 100%; }
+/* 部品の追加: ① ファイル → ② 加工の種類 → ③ 内容 の順に進める */
+form.add { display: flex; flex-direction: column; gap: 18px; }
+.step { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.step-h { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-weight: 700; font-size: 14px; }
+.step-h small { font-weight: 400; color: var(--muted); font-size: 12px; }
+.step-n { width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: var(--on-accent); display: inline-grid; place-items: center; font: 600 12px var(--mono); }
+.dropzone { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: 110px; padding: 16px; border: 2px dashed var(--accent); border-radius: 10px; background: color-mix(in srgb, var(--accent) 6%, var(--surface)); text-align: center; cursor: pointer; }
+.dropzone strong { font-size: 16px; color: var(--accent); }
+.dropzone span { font-size: 12px; color: var(--muted); }
+.dropzone:hover, .dropzone.dragging { background: color-mix(in srgb, var(--accent) 15%, var(--surface)); }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+.dropzone:has(+ #f-files:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.f-list .kind { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; font-family: var(--mono); }
+.f-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.f-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.f-list .fname { font-family: var(--mono); overflow-wrap: anywhere; }
+.f-list .sz { color: var(--muted); font: 12px var(--mono); }
+.proc-pick { display: flex; flex-wrap: wrap; gap: 8px; border-radius: 10px; }
+.proc-pick button { padding: 8px 16px; border-radius: 8px; border: 1px solid var(--line-strong); background: var(--surface); font-weight: 700; }
+.proc-pick button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.proc-pick.need { outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: 4px; }
+#f-proc-hint.need { color: var(--accent); font-weight: 700; }
+.fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.p-meta .len { font-family: var(--mono); color: var(--fg); font-weight: 600; }
 /* 名前を自分で追加 */
 .add-member { border-top: 1px dashed var(--line); padding-top: 12px; display: flex; flex-direction: column; gap: 10px; }
 /* プロジェクト */
@@ -217,8 +241,9 @@ body:not(.booting) .booting-only { display: none; }
 .check[aria-pressed="true"] { color: var(--on-done); }
 .check:not(:disabled):hover { color: var(--done); }
 .check[aria-pressed="true"]:not(:disabled):hover { color: var(--on-done); }
-.assign-btn { font-size: 12px; font-weight: 700; padding: 2px 10px; border-radius: 999px; border: 1px dashed var(--accent); color: var(--accent); background: transparent; }
-.assign-btn:not(:disabled):hover { border-style: solid; }
+/* 担当する: 目立つように大きく */
+.assign-btn { font-size: 14px; font-weight: 700; padding: 5px 16px; border-radius: 999px; border: 2px solid var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--surface)); }
+.assign-btn:not(:disabled):hover { background: var(--accent); color: var(--on-accent); }
 .assign-btn:disabled { opacity: .5; cursor: not-allowed; }
 /* 部品を登録した人 */
 .p-by { font-size: 12px; color: var(--muted); }
@@ -252,7 +277,7 @@ body:not(.booting) .booting-only { display: none; }
         <div class="me" id="me" hidden><strong id="me-name"></strong> として操作中・<button class="linkbtn" id="me-change" type="button">変更</button></div>
       </div>
     </div>
-    <p>各機構から要求された板パーツを、加工の種類（CNC・レーザー）と板厚・材質ごとにまとめて管理します。区画の「未加工をすべて選択」で同じ板材から切る部品をまとめて選び、不要なものを外してファイルを一括で保存できます。</p>
+    <p>各機構から要求された部品を、加工の種類（CNC・レーザー・角パイプ・3Dプリンター）と材料ごとにまとめて管理します。区画の「未加工をすべて選択」で同じ材料から作る部品をまとめて選び、不要なものを外してファイルを一括でダウンロードできます。</p>
   </header>
 
   <div id="notice" class="notice" hidden></div>
@@ -300,6 +325,46 @@ body:not(.booting) .booting-only { display: none; }
     </form>
   </section>
 
+  <details class="panel app-only" id="add-panel" open>
+    <summary>部品を追加</summary>
+    <form class="add" id="add-form" autocomplete="off" novalidate>
+      <div class="step">
+        <div class="step-h"><span class="step-n">1</span>ファイルを選ぶ<small>任意・複数可・1ファイル20MBまで</small></div>
+        <label class="dropzone" id="f-drop" for="f-files">
+          <strong>ここにファイルをドラッグ</strong>
+          <span>またはクリックして選ぶ。.stl は 3Dプリンター、.dxf はレーザー、.nc / .tap / .cnc は CNC に自動で分類します</span>
+        </label>
+        <input id="f-files" class="visually-hidden" type="file" multiple>
+        <ul class="f-list" id="f-list" hidden></ul>
+      </div>
+      <div class="step" id="f-step2">
+        <div class="step-h"><span class="step-n">2</span>加工の種類</div>
+        <div class="proc-pick" id="f-proc-pick" role="group" aria-label="加工の種類"></div>
+        <span class="msg" id="f-proc-hint" role="status" aria-live="polite"></span>
+      </div>
+      <div class="step" id="f-step3" hidden>
+        <div class="step-h"><span class="step-n">3</span>内容</div>
+        <div class="fields">
+          <div class="field" data-forms="pipe"><label for="f-sec">断面 (mm)</label><input id="f-sec" list="sec-list" maxlength="20" placeholder="例: 20×20"></div>
+          <div class="field" data-forms="plate pipe"><label for="f-t" id="f-t-label">板厚 (mm)</label><input id="f-t" class="mono" type="number" inputmode="decimal" step="0.5" min="0" max="200" placeholder="例: 5"></div>
+          <div class="field" data-forms="pipe"><label for="f-len">長さ (mm)</label><input id="f-len" class="mono" type="number" inputmode="decimal" step="1" min="0" max="10000" placeholder="例: 300"></div>
+          <div class="field"><label for="f-mat">材質</label><input id="f-mat" list="mat-list" maxlength="30" placeholder="例: A5052"></div>
+          <div class="field"><label for="f-qty">数量</label><input id="f-qty" class="mono" type="number" inputmode="numeric" step="1" min="1" max="999" value="1"></div>
+          <div class="field wide"><label for="f-name">部品名</label><input id="f-name" maxlength="80" placeholder="ファイルを選ぶと、ファイル名から入ります"></div>
+          <div class="field"><label for="f-mech">要求元の機構</label><input id="f-mech" list="mech-list" maxlength="40" placeholder="例: 足回り"></div>
+          <div class="field wide"><label for="f-note">備考</label><input id="f-note" maxlength="200" placeholder="例: 穴径は図面の公差どおり"></div>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn primary" id="f-submit" type="submit">追加する</button>
+        <span class="msg" id="f-msg" role="status" aria-live="polite"></span>
+      </div>
+      <datalist id="mat-list"></datalist>
+      <datalist id="mech-list"></datalist>
+      <datalist id="sec-list"></datalist>
+    </form>
+  </details>
+
   <section class="summary app-only" aria-label="全体の進捗">
     <div class="stats">
       <div class="stat todo"><span class="lbl">未加工</span><span class="num" id="s-todo">0<small>点 / 0個</small></span></div>
@@ -309,25 +374,6 @@ body:not(.booting) .booting-only { display: none; }
     <div class="bar" aria-hidden="true"><i id="s-bar"></i></div>
   </section>
 
-  <details class="panel app-only" id="add-panel" open>
-    <summary>部品を追加</summary>
-    <form class="add" id="add-form" autocomplete="off" novalidate>
-      <div class="field wide"><label for="f-name">部品名</label><input id="f-name" required maxlength="80" placeholder="例: ステアリングブラケット"></div>
-      <div class="field"><label for="f-t">板厚 (mm)</label><input id="f-t" class="mono" required type="number" inputmode="decimal" step="0.5" min="0" max="200" placeholder="例: 5"></div>
-      <div class="field"><label for="f-mat">材質</label><input id="f-mat" list="mat-list" maxlength="30" placeholder="例: A5052"></div>
-      <div class="field"><label for="f-qty">数量</label><input id="f-qty" class="mono" required type="number" inputmode="numeric" step="1" min="1" max="999" value="1"></div>
-      <div class="field"><label for="f-mech">要求元の機構</label><input id="f-mech" list="mech-list" maxlength="40" placeholder="例: 足回り"></div>
-      <div class="field wide"><label for="f-note">備考</label><input id="f-note" maxlength="200" placeholder="例: 穴径は図面の公差どおり"></div>
-      <div class="field"><label for="f-proc">加工の種類</label><select id="f-proc"></select></div>
-      <div class="field wide" id="f-files-wrap"><label for="f-files">CAM・CADファイル（任意・複数可・1ファイル20MBまで。.ipt は CNC、.dxf はレーザーに自動で分類）</label><input id="f-files" type="file" multiple></div>
-      <div class="form-actions">
-        <button class="btn primary" id="f-submit" type="submit">追加する</button>
-        <span class="msg" id="f-msg" role="status" aria-live="polite"></span>
-      </div>
-      <datalist id="mat-list"></datalist>
-      <datalist id="mech-list"></datalist>
-    </form>
-  </details>
 
   <div class="tabs proc-tabs app-only" id="proc-tabs" role="group" aria-label="加工の種類"></div>
 
@@ -357,7 +403,7 @@ body:not(.booting) .booting-only { display: none; }
   <div class="in">
     <div class="ab-info"><strong id="ab-count">0点を選択中</strong><span id="ab-detail"></span></div>
     <div class="ab-btns">
-      <button class="btn primary" id="ab-zip" type="button">CAMをzipで保存</button>
+      <button class="btn primary" id="ab-zip" type="button">ファイルをzipでダウンロード</button>
       <button class="btn" id="ab-assign" type="button">担当する</button>
       <button class="btn" id="ab-done" type="button">加工済みにする</button>
       <button class="btn" id="ab-clear" type="button">選択を解除</button>
@@ -367,19 +413,24 @@ body:not(.booting) .booting-only { display: none; }
 </div>
 
 <script async src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script>window.CNC_API_URL = "https://script.google.com/macros/s/AKfycbzG0rqrxeCfHqBO56nabBBjuAPPg1CUwbHo9tm_4wfaStB5TYClO_L_YvzGN9crI0bz/exec"; window.CNC_BUILD = "2026-10-08 22:16:18";</script>
+<script>window.CNC_API_URL = "https://script.google.com/macros/s/AKfycbzG0rqrxeCfHqBO56nabBBjuAPPg1CUwbHo9tm_4wfaStB5TYClO_L_YvzGN9crI0bz/exec"; window.CNC_BUILD = "2026-10-08 22:46:09";</script>
 <script>
 (function () {
   var NO_MAT = "材質未設定";
   /* 加工の種類。増やすときはここと Data.gs の PROCESSES_ に足す（CLAUDE.md「加工の種類」参照）。
-     form: 入力項目の型。今は板（板厚・材質）だけ。角パイプや3Dプリンターを足すときは型を増やす */
+     exts: 添付ファイルの拡張子で自動で分類（.ipt は板か角パイプか分からないので使わない）
+     form: 入力項目の型。plate = 板厚・材質、pipe = 断面・肉厚・長さ・材質、print = 材質だけ。
+           材質の候補も型ごとに分ける（CNC とレーザーは同じ候補） */
   var PROCESSES = [
-    { id: "cnc", label: "CNC加工", short: "CNC", exts: ["ipt", "nc", "tap"], form: "plate" },
-    { id: "laser", label: "レーザー加工", short: "レーザー", exts: ["dxf"], form: "plate" }
+    { id: "cnc", label: "CNC加工", short: "CNC", exts: ["nc", "tap", "cnc"], form: "plate" },
+    { id: "laser", label: "レーザー加工", short: "レーザー", exts: ["dxf"], form: "plate" },
+    { id: "pipe", label: "角パイプ", short: "角パイプ", exts: [], form: "pipe" },
+    { id: "print3d", label: "3Dプリンター", short: "3DP", exts: ["stl"], form: "print" }
   ];
   var NONE_PROC = { id: "none", label: "未分類", short: "未分類", exts: [], form: "plate" };
   function procInfo(id) { return PROCESSES.filter(function (x) { return x.id === id; })[0] || NONE_PROC; }
   function procOf(p) { return procInfo(p.process).id; }
+  function formOf(p) { return procInfo(p.process).form; }
   function procOrder(id) { var i = PROCESSES.map(function (x) { return x.id; }).indexOf(id); return i < 0 ? PROCESSES.length : i; }
   /* ファイル名から種類を決める（最初に当てはまったもの）。決まらなければ "" */
   function inferProcess(names) {
@@ -388,6 +439,27 @@ body:not(.booting) .booting-only { display: none; }
       for (var j = 0; j < PROCESSES.length; j++) if (PROCESSES[j].exts.indexOf(ext) >= 0) return PROCESSES[j].id;
     }
     return "";
+  }
+  /* 区画の見出し・フォルダ名に使う「同じ材料」の説明 */
+  function stockLabel(p) {
+    var f = formOf(p);
+    if (f === "pipe") return "□" + p.section + " t" + fmtT(p.thickness);
+    if (f === "print") return "";
+    return "板厚" + fmtT(p.thickness) + "mm";
+  }
+  function stockDir(p) {
+    var f = formOf(p), mat = safe(matOf(p));
+    if (f === "pipe") return safe("□" + p.section) + "_t" + fmtT(p.thickness) + "_" + mat;
+    if (f === "print") return mat;
+    return "t" + fmtT(p.thickness) + "mm_" + mat;
+  }
+  /* 部品の説明（追加したときの知らせなど） */
+  function partDesc(p) {
+    var f = formOf(p), bits = [procInfo(p.process).label];
+    if (f !== "print") bits.push(stockLabel(p));
+    if (f === "pipe") bits.push("L" + fmtT(p.length) + "mm");
+    bits.push(matOf(p));
+    return bits.join("・");
   }
   var MAX_BYTES = 20 * 1024 * 1024;
   var STATUS_CHUNK = 5;   /* 一括の加工済み: 1回の呼び出しで送る件数（ロックを長く持たないため） */
@@ -768,7 +840,7 @@ body:not(.booting) .booting-only { display: none; }
       .then(function () { delete busy[p.id]; delete deleting[p.id]; render(); });
   }
 
-  /* ---------- CAMファイル ---------- */
+  /* ---------- 添付ファイル ---------- */
   function pickCam(p) {
     var inp = document.createElement("input");
     inp.type = "file"; inp.multiple = true;
@@ -834,8 +906,8 @@ body:not(.booting) .booting-only { display: none; }
       line.appendChild(d);
       box.appendChild(line);
     });
-    if (!files.length && p.status !== "done") box.appendChild(h("span", { class: "cam-none" }, "CAM未添付"));
-    box.appendChild(h("div", null, h("button", { class: "linkbtn", type: "button", disabled: !!camBusy[p.id], onclick: function () { pickCam(p); } }, camBusy[p.id] ? "アップロード中…" : "＋ CAMファイルを添付（この行にドラッグでも可）")));
+    if (!files.length && p.status !== "done") box.appendChild(h("span", { class: "cam-none" }, "ファイル未添付"));
+    box.appendChild(h("div", null, h("button", { class: "linkbtn", type: "button", disabled: !!camBusy[p.id], onclick: function () { pickCam(p); } }, camBusy[p.id] ? "アップロード中…" : "＋ ファイルを添付（この行にドラッグでも可）")));
     return box;
   }
 
@@ -873,15 +945,15 @@ body:not(.booting) .booting-only { display: none; }
     if (typeof JSZip === "undefined") { showNotice("zip作成用の部品を読み込めませんでした。ページを開き直してください。"); return; }
     zipping = true; zipLabel = ""; updateBar();
     var z = new JSZip();
-    var rows = [["加工の種類", "板厚(mm)", "材質", "部品名", "数量", "機構", "備考", "CAMファイル"]];
+    var rows = [["加工の種類", "板厚・肉厚(mm)", "断面", "長さ(mm)", "材質", "部品名", "数量", "機構", "備考", "ファイル"]];
     var noCam = [], failed = [], jobs = [];
     var groups = unique(list.map(groupKey));
     var procs = unique(list.map(procOf));
-    list.sort(function (a, b) { return procOrder(procOf(a)) - procOrder(procOf(b)) || a.thickness - b.thickness || matOf(a).localeCompare(matOf(b), "ja") || String(a.name).localeCompare(String(b.name), "ja"); })
+    list.sort(function (a, b) { return procOrder(procOf(a)) - procOrder(procOf(b)) || stockDir(a).localeCompare(stockDir(b), "ja", { numeric: true }) || String(a.name).localeCompare(String(b.name), "ja"); })
       .forEach(function (p) {
-        var dir = (procs.length > 1 ? safe(procInfo(procOf(p)).label) + "/" : "") + "t" + fmtT(p.thickness) + "mm_" + safe(matOf(p)) + "/" + safe(p.name) + "_x" + (p.qty || 1) + (p.mechanism ? "_" + safe(p.mechanism) : "") + "/";
+        var dir = (procs.length > 1 ? safe(procInfo(procOf(p)).label) + "/" : "") + stockDir(p) + "/" + safe(p.name) + (formOf(p) === "pipe" ? "_L" + fmtT(p.length) : "") + "_x" + (p.qty || 1) + (p.mechanism ? "_" + safe(p.mechanism) : "") + "/";
         var files = camsOf(p.id);
-        rows.push([procInfo(procOf(p)).label, fmtT(p.thickness), matOf(p), p.name, p.qty || 1, p.mechanism || "", p.note || "", files.map(function (c) { return c.name; }).join(" / ")]);
+        rows.push([procInfo(procOf(p)).label, p.thickness == null ? "" : fmtT(p.thickness), p.section || "", p.length == null ? "" : fmtT(p.length), matOf(p), p.name, p.qty || 1, p.mechanism || "", p.note || "", files.map(function (c) { return c.name; }).join(" / ")]);
         if (!files.length) noCam.push(p.name);
         var used = {};
         files.forEach(function (c) {
@@ -901,13 +973,13 @@ body:not(.booting) .booting-only { display: none; }
       return z.generateAsync({ type: "blob", compression: "DEFLATE", compressionOptions: { level: 6 } });
     }).then(function (blob) {
       var d = new Date(), stamp = d.getFullYear() + String(d.getMonth() + 1).padStart(2, "0") + String(d.getDate()).padStart(2, "0");
-      var g0 = groups[0].split("|");
-      var label = groups.length === 1 ? "_t" + fmtT(parseFloat(g0[1])) + "mm_" + safe(g0.slice(2).join("|")) : "_" + groups.length + "区画";
-      var head = procs.length === 1 ? procInfo(procs[0]).short : "板パーツ";
+      var label = groups.length === 1 ? "_" + stockDir(list[0]) : "_" + groups.length + "区画";
+      var allPlate = list.every(function (p) { return formOf(p) === "plate"; });
+      var head = procs.length === 1 ? procInfo(procs[0]).short : allPlate ? "板パーツ" : "部品";
       saveBlob(blob, safe(head) + "_" + safe(projectName() || "プロジェクト") + label + "_" + list.length + "点_" + stamp + ".zip");
       var m = "保存しました。";
       if (failed.length) m += "取得できなかったファイル: " + failed.join("、") + "。";
-      m += noCam.length ? "CAMが無い部品: " + noCam.join("、") + "（加工リスト.csv には含めています）" : "zip内の「加工リスト.csv」に数量と機構をまとめています。";
+      m += noCam.length ? "ファイルが無い部品: " + noCam.join("、") + "（加工リスト.csv には含めています）" : "zip内の「加工リスト.csv」に数量と機構をまとめています。";
       showNotice(m, failed.length > 0);
     }).catch(function () { showNotice("zipを作成できませんでした。もう一度お試しください。"); })
       .then(function () { zipping = false; zipLabel = ""; updateBar(); });
@@ -949,10 +1021,13 @@ body:not(.booting) .booting-only { display: none; }
       .then(refresh)
       .then(function () { delete busy[p.id]; render(); });
   }
+  /* 入力項目が同じ型の種類どうし（CNC ⇔ レーザー ⇔ 未分類）だけ切り替えられる */
   function procBlock(p, off) {
-    var cur = procOf(p);
+    var cur = procOf(p), form = formOf(p);
+    var opts = PROCESSES.concat([NONE_PROC]).filter(function (x) { return x.form === form; });
+    if (opts.length < 2) return null;
     var sel = h("select", { "aria-label": "加工の種類: " + p.name, disabled: off, onchange: function (e) { setProcess(p, e.target.value); } },
-      PROCESSES.concat([NONE_PROC]).map(function (x) { return h("option", { value: x.id }, x.label); }));
+      opts.map(function (x) { return h("option", { value: x.id }, x.label); }));
     sel.value = cur;
     return h("div", { class: "p-proc" }, sel);
   }
@@ -1011,9 +1086,9 @@ body:not(.booting) .booting-only { display: none; }
     list.forEach(function (p) { var k = camsOf(p.id).length; nCam += k; if (!k) noCam++; });
     var nGroups = unique(list.map(groupKey)).length;
     $("ab-count").textContent = list.length + "点を選択中（計" + sumQty(list) + "個）";
-    $("ab-detail").textContent = nGroups + "区画 · CAM " + nCam + "件" + (noCam ? " · CAMなし " + noCam + "点" : "");
+    $("ab-detail").textContent = nGroups + "区画 · ファイル " + nCam + "件" + (noCam ? " · ファイルなし " + noCam + "点" : "");
     $("ab-zip").disabled = zipping;
-    $("ab-zip").textContent = zipping ? (zipLabel || "zipを作成中…") : "CAMをzipで保存";
+    $("ab-zip").textContent = zipping ? (zipLabel || "zipを作成中…") : "ファイルをzipでダウンロード";
     $("ab-done").disabled = marking;
     var toTake = list.filter(function (p) { return p.assignee !== me; }).length;
     $("ab-assign").hidden = !toTake;
@@ -1021,7 +1096,17 @@ body:not(.booting) .booting-only { display: none; }
   }
 
   /* ---------- 描画 ---------- */
-  function groupKey(p) { return procOf(p) + "|" + tKey(p.thickness) + "|" + matOf(p); }
+  /* 区画 = 加工の種類 × 材料（板: 板厚、角パイプ: 断面・肉厚、3Dプリンター: なし）× 材質 */
+  function groupKey(p) {
+    var f = formOf(p);
+    var mid = f === "plate" ? tKey(p.thickness) : f === "pipe" ? String(p.section).replace(/\|/g, "/") + " t" + tKey(p.thickness) : "";
+    return procOf(p) + "|" + mid + "|" + matOf(p);
+  }
+  function cmpMid(a, b) {
+    var na = parseFloat(a), nb = parseFloat(b);
+    if (String(na) === a && String(nb) === b) return na - nb;
+    return a.localeCompare(b, "ja", { numeric: true });
+  }
   function sumQty(list) { return list.reduce(function (s, p) { return s + (p.qty || 0); }, 0); }
   function unique(list) { return Array.from(new Set(list.filter(Boolean))); }
 
@@ -1051,9 +1136,7 @@ body:not(.booting) .booting-only { display: none; }
     }
     var ml = $("mech-list"); ml.textContent = "";
     mechs.forEach(function (m) { ml.appendChild(h("option", { value: m })); });
-    var mt = $("mat-list"); mt.textContent = "";
-    unique(parts.map(function (p) { return (p.material || "").trim(); })).sort(function (a, b) { return a.localeCompare(b, "ja"); })
-      .forEach(function (m) { mt.appendChild(h("option", { value: m })); });
+    fillFormLists();
   }
 
   function checkIcon() {
@@ -1096,7 +1179,8 @@ body:not(.booting) .booting-only { display: none; }
         h("span", { class: "p-name" }, p.name),
         h("span", { class: "p-meta" },
           p.mechanism ? h("span", null, p.mechanism) : null,
-          h("span", { class: "qty" }, "×" + (p.qty || 1))),
+          h("span", { class: "qty" }, "×" + (p.qty || 1)),
+          formOf(p) === "pipe" ? h("span", { class: "len" }, "L" + fmtT(p.length) + "mm") : null),
         assignBlock(p, off),
         procBlock(p, off),
         p.note ? h("span", { class: "p-note" }, p.note) : null,
@@ -1115,19 +1199,96 @@ body:not(.booting) .booting-only { display: none; }
     if (procFilter && !items.some(function (x) { return x.id === procFilter; })) items.push(procInfo(procFilter));
     items.forEach(function (x) {
       box.appendChild(h("button", { type: "button", "aria-pressed": String(procFilter === x.id), onclick: function () {
-        procFilter = x.id; store("cnc-proc", x.id); syncProcSelect(); render();
+        procFilter = x.id; store("cnc-proc", x.id); render();
       } }, x.label, h("span", { class: "n" }, String(x.id ? (count[x.id] || 0) : parts.length))));
     });
   }
-  /* 追加フォームの種類: 種類で絞り込んでいるときはその種類を初期値にする */
-  function syncProcSelect() {
-    var s = $("f-proc");
-    if (!s.options.length) {
-      s.appendChild(h("option", { value: "auto" }, "自動（ファイルから判定）"));
-      PROCESSES.concat([NONE_PROC]).forEach(function (x) { s.appendChild(h("option", { value: x.id }, x.label)); });
-    }
-    s.value = "auto";
+  /* ---------- 部品の追加フォーム: ① ファイル → ② 加工の種類 → ③ 内容 ---------- */
+  var formProc = "";   /* 追加フォームで選んでいる加工の種類 */
+  var fieldsForm = ""; /* ③ の欄に入っている値がどの型のものか（型が変わったら消す） */
+  var nameAuto = "";   /* ファイル名から自動で入れた部品名（手で書き換えたら上書きしない） */
+  var formFiles = [];  /* ① で選んだファイル */
+  function buildProcPick() {
+    var box = $("f-proc-pick"); box.textContent = "";
+    PROCESSES.forEach(function (x) {
+      box.appendChild(h("button", { type: "button", "aria-pressed": String(formProc === x.id), onclick: function () { chooseFormProc(x.id, true); } }, x.label));
+    });
   }
+  function formHint(text, need) {
+    var hint = $("f-proc-hint");
+    hint.textContent = text; hint.className = "msg" + (need ? " need" : "");
+    $("f-proc-pick").classList.toggle("need", !!need);
+  }
+  function chooseFormProc(id, byHand) {
+    formProc = id;
+    var form = procInfo(id).form;
+    if (fieldsForm && fieldsForm !== form) { $("f-t").value = ""; $("f-mat").value = ""; $("f-sec").value = ""; $("f-len").value = ""; }
+    fieldsForm = form;
+    Array.prototype.forEach.call(document.querySelectorAll("#f-step3 [data-forms]"), function (el) {
+      el.hidden = el.dataset.forms.split(" ").indexOf(form) < 0;
+    });
+    $("f-t-label").textContent = form === "pipe" ? "肉厚 (mm)" : "板厚 (mm)";
+    $("f-t").placeholder = form === "pipe" ? "例: 1.5" : "例: 5";
+    $("f-mat").placeholder = form === "pipe" ? "例: A6063" : form === "print" ? "例: PLA" : "例: A5052";
+    $("f-step3").hidden = false;
+    buildProcPick();
+    if (byHand) formHint("", false);
+    fillFormLists();
+    if (byHand) {
+      var first = Array.prototype.filter.call(document.querySelectorAll("#f-step3 .field"), function (el) { return !el.hidden; })[0];
+      if (first) first.querySelector("input").focus();
+    }
+  }
+  function resetFormProc() {
+    formProc = ""; $("f-step3").hidden = true; buildProcPick(); formHint("", false);
+  }
+  /* 材質（と角パイプの断面）の候補は、同じ型の登録済みの部品から作る */
+  function fillFormLists() {
+    var form = formProc ? procInfo(formProc).form : "plate";
+    var same = parts.filter(function (p) { return formOf(p) === form; });
+    var byJa = function (a, b) { return a.localeCompare(b, "ja", { numeric: true }); };
+    var mt = $("mat-list"); mt.textContent = "";
+    unique(same.map(function (p) { return (p.material || "").trim(); })).sort(byJa).forEach(function (m) { mt.appendChild(h("option", { value: m })); });
+    var sl = $("sec-list"); sl.textContent = "";
+    unique(same.map(function (p) { return p.section || ""; })).sort(byJa).forEach(function (m) { sl.appendChild(h("option", { value: m })); });
+  }
+  function setFormFiles(list) {
+    formFiles = list;
+    var ul = $("f-list"); ul.textContent = "";
+    list.forEach(function (f) {
+      var ext = extOf(f.name);
+      ul.appendChild(h("li", null, ext ? h("span", { class: "kind" }, ext) : null, h("span", { class: "fname" }, f.name), h("span", { class: "sz" }, fmtSize(f.size))));
+    });
+    if (list.length) ul.appendChild(h("li", null, h("button", { class: "linkbtn", type: "button", onclick: function () { setFormFiles([]); $("f-files").value = ""; } }, "選んだファイルを外す")));
+    ul.hidden = !list.length;
+    if (!list.length) return;
+    var names = list.map(function (f) { return f.name; });
+    var inferred = inferProcess(names);
+    if (inferred) {
+      chooseFormProc(inferred, false);
+      formHint("ファイルから「" + procInfo(inferred).label + "」と判定しました。違うときは選び直してください。", false);
+    } else if (!formProc) {
+      formHint("このファイルからは加工の種類が分かりません。上のボタンから選んでください。", true);
+    }
+    var nm = $("f-name");
+    if (!nm.value.trim() || nm.value === nameAuto) {
+      nameAuto = names[0].replace(/\.[^.]+$/, "").slice(0, 80);
+      nm.value = nameAuto;
+    }
+  }
+  $("f-files").addEventListener("change", function () { setFormFiles(Array.prototype.slice.call(this.files || [])); });
+  (function () {
+    var dz = $("f-drop"), depth = 0;
+    function hasFiles(e) { return e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types, "Files") >= 0; }
+    dz.addEventListener("dragenter", function (e) { if (hasFiles(e)) { e.preventDefault(); depth++; dz.classList.add("dragging"); } });
+    dz.addEventListener("dragover", function (e) { if (hasFiles(e)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } });
+    dz.addEventListener("dragleave", function () { if (--depth <= 0) { depth = 0; dz.classList.remove("dragging"); } });
+    dz.addEventListener("drop", function (e) {
+      e.preventDefault(); depth = 0; dz.classList.remove("dragging");
+      var fs = Array.prototype.slice.call((e.dataTransfer && e.dataTransfer.files) || []);
+      if (fs.length) setFormFiles(fs);
+    });
+  })();
 
   function render() {
     showProject();
@@ -1156,19 +1317,20 @@ body:not(.booting) .booting-only { display: none; }
     if (!parts.length) {
       root.appendChild(h("div", { class: "empty" },
         h("strong", null, "まだ加工する部品がありません"),
-        h("span", null, "上の「部品を追加」から、機構ごとに必要な部品を板厚と材質つきで登録してください。同じ板厚・材質の部品が1つの区画にまとまります。"),
-        h("span", null, "登録後、各部品にCAMファイルを添付できます。")));
+        h("span", null, "上の「部品を追加」から、機構ごとに必要な部品を登録してください。同じ加工の種類・材料の部品が1つの区画にまとまります。"),
+        h("span", null, "ファイルを先に選ぶと、加工の種類と部品名が自動で入ります。")));
       return;
     }
     var byG = {};
     scoped.forEach(function (p) { var k = groupKey(p); (byG[k] = byG[k] || []).push(p); });
     var keys = Object.keys(byG).sort(function (a, b) {
       var A = a.split("|"), B = b.split("|");
-      return procOrder(A[0]) - procOrder(B[0]) || parseFloat(A[1]) - parseFloat(B[1]) || (A[2] === NO_MAT) - (B[2] === NO_MAT) || A[2].localeCompare(B[2], "ja");
+      var ma = A.slice(2).join("|"), mb = B.slice(2).join("|");
+      return procOrder(A[0]) - procOrder(B[0]) || cmpMid(A[1], B[1]) || (ma === NO_MAT) - (mb === NO_MAT) || ma.localeCompare(mb, "ja");
     });
     var shown = 0;
     keys.forEach(function (k) {
-      var items = byG[k], kp = k.split("|"), proc = procInfo(kp[0]), t = parseFloat(kp[1]), mat = kp.slice(2).join("|");
+      var items = byG[k], kp = k.split("|"), proc = procInfo(kp[0]), mat = kp.slice(2).join("|"), p0 = items[0], form = formOf(p0);
       var gt = items.filter(function (p) { return p.status !== "done"; }).sort(function (a, b) { return (a.createdAt || 0) - (b.createdAt || 0); });
       var gd = items.filter(function (p) { return p.status === "done"; }).sort(function (a, b) { return (b.doneAt || 0) - (a.doneAt || 0); });
       var showT = view !== "done" && gt.length, showD = view !== "todo" && gd.length;
@@ -1177,7 +1339,9 @@ body:not(.booting) .booting-only { display: none; }
       var nSel = gt.filter(function (p) { return sel.has(p.id); }).length;
       var head = h("div", { class: "g-head" },
         h("span", { class: "proc-pill" + (proc.id === "none" ? " none" : "") }, proc.label),
-        h("div", { class: "t" }, h("span", { class: "t-lbl" }, "板厚"), fmtT(t), h("small", null, "mm")),
+        form === "plate" ? h("div", { class: "t" }, h("span", { class: "t-lbl" }, "板厚"), fmtT(p0.thickness), h("small", null, "mm"))
+          : form === "pipe" ? h("div", { class: "t" }, h("span", { class: "t-lbl" }, "断面"), "□" + p0.section, h("small", null, "t" + fmtT(p0.thickness)))
+          : null,
         h("span", { class: "g-mat" + (mat === NO_MAT ? " none" : "") }, mat),
         h("div", { class: "g-meta" },
           h("span", { class: "pill todo" }, "未加工 " + gt.length + "点/" + sumQty(gt) + "個"),
@@ -1188,7 +1352,7 @@ body:not(.booting) .booting-only { display: none; }
           h("input", { type: "checkbox", id: gid, checked: nSel === gt.length, indeterminate: nSel > 0 && nSel < gt.length, onchange: function (e) { toggleGroup(gt, e.target.checked); } }),
           nSel ? nSel + "/" + gt.length + " 選択中" : "未加工をすべて選択"));
       }
-      var g = h("section", { class: "group", "aria-label": proc.label + " 板厚 " + fmtT(t) + " mm " + mat }, head);
+      var g = h("section", { class: "group", "aria-label": proc.label + " " + stockLabel(p0) + " " + mat }, head);
       if (showT) {
         g.appendChild(h("div", { class: "sub todo" }, h("span", null, "未加工"), h("span", null, gt.length + "点")));
         g.appendChild(h("ul", { class: "parts" }, gt.map(partRow)));
@@ -1287,8 +1451,7 @@ body:not(.booting) .booting-only { display: none; }
     }).then(function (failed) {
       if (!failed.length) {
         var n = j.files.length;
-        var pl = procInfo(j.part.process || inferProcess(j.files.map(function (f) { return f.name; }))).label;
-        setJob(j, "done", "「" + name + "」を " + pl + "・板厚" + fmtT(j.part.thickness) + "mm・" + (j.part.material || NO_MAT) + " に追加しました" + (n ? "（ファイル" + n + "件）" : ""));
+        setJob(j, "done", "「" + name + "」を " + partDesc(j.part) + " に追加しました" + (n ? "（ファイル" + n + "件）" : ""));
         setTimeout(function () { removeJob(j); }, 4000);
         return;
       }
@@ -1310,23 +1473,33 @@ body:not(.booting) .booting-only { display: none; }
     e.preventDefault();
     var msg = $("f-msg");
     if (!ready) { say(msg, "まだ読み込み中です。少し待ってからもう一度お試しください。", true); return; }
+    if (!projectId) { say(msg, "プロジェクトを選んでください。", true); return; }
+    if (!formProc) { say(msg, "加工の種類を選んでください。", true); formHint("加工の種類を選んでください。", true); return; }
+    var form = procInfo(formProc).form;
     var name = $("f-name").value.trim();
-    var t = parseFloat($("f-t").value);
+    var t = parseFloat($("f-t").value), len = parseFloat($("f-len").value), sec = $("f-sec").value.trim();
     var qty = Number($("f-qty").value);
-    if (!name) { say(msg, "部品名を入力してください。", true); $("f-name").focus(); return; }
-    if (!(t > 0 && t <= 200)) { say(msg, "板厚は0より大きい数値（mm）で入力してください。", true); $("f-t").focus(); return; }
+    if (form === "pipe" && !sec) { say(msg, "断面を入力してください（例: 20×20）。", true); $("f-sec").focus(); return; }
+    if (form !== "print" && !(t > 0 && t <= 200)) { say(msg, (form === "pipe" ? "肉厚" : "板厚") + "は0より大きい数値（mm）で入力してください。", true); $("f-t").focus(); return; }
+    if (form === "pipe" && !(len > 0 && len <= 10000)) { say(msg, "長さは0より大きい数値（mm）で入力してください。", true); $("f-len").focus(); return; }
     if (!(Number.isInteger(qty) && qty >= 1 && qty <= 999)) { say(msg, "数量は1〜999の整数で入力してください。", true); $("f-qty").focus(); return; }
-    var fi = $("f-files"), fs = Array.prototype.slice.call(fi.files || []);
+    if (!name) { say(msg, "部品名を入力してください。", true); $("f-name").focus(); return; }
+    var fs = formFiles.slice();
     var big = fs.filter(function (f) { return f.size > MAX_BYTES; });
     if (big.length) { say(msg, "ファイルが大きすぎます（1ファイル20MBまで）: " + big.map(function (f) { return f.name; }).join("、"), true); return; }
-    if (!projectId) { say(msg, "プロジェクトを選んでください。", true); return; }
-    var pv = $("f-proc").value;
-    var proc = pv === "auto" ? inferProcess(fs.map(function (f) { return f.name; })) : pv;
-    enqueueAdd({ projectId: projectId, process: proc, name: name, thickness: Math.round(t * 1000) / 1000, material: $("f-mat").value.trim(), qty: qty, mechanism: $("f-mech").value.trim(), note: $("f-note").value.trim() }, fs);
-    /* 板厚・材質・機構は続けて同じものを入れることが多いので残す */
+    enqueueAdd({
+      projectId: projectId, process: formProc, name: name,
+      thickness: form === "print" ? null : Math.round(t * 1000) / 1000,
+      section: form === "pipe" ? sec : "", length: form === "pipe" ? Math.round(len * 10) / 10 : null,
+      material: $("f-mat").value.trim(), qty: qty, mechanism: $("f-mech").value.trim(), note: $("f-note").value.trim()
+    }, fs);
+    /* 次の部品へ: ファイル・部品名・数量・備考は空に、加工の種類は選び直し（ファイルから自動で判定するため）。
+       板厚・材質・機構などは続けて同じものを使うことが多いので残す */
     say(msg, "");
-    $("f-name").value = ""; $("f-note").value = ""; $("f-qty").value = "1"; fi.value = ""; $("f-proc").value = "auto";
-    $("f-name").focus();
+    $("f-name").value = ""; nameAuto = ""; $("f-note").value = ""; $("f-qty").value = "1";
+    $("f-files").value = ""; setFormFiles([]);
+    resetFormProc();
+    $("add-panel").scrollIntoView({ block: "nearest" });
   });
 
   /* ---------- 新しい版の確認（GitHub Pages は最大10分キャッシュされるため） ---------- */
@@ -1349,7 +1522,7 @@ body:not(.booting) .booting-only { display: none; }
   /* ---------- 起動 ---------- */
   var v = load("cnc-view"); if (v === "todo" || v === "done" || v === "all") view = v;
   var pf = load("cnc-proc"); if (pf && procInfo(pf).id === pf) procFilter = pf;
-  syncProcSelect();
+  buildProcPick();
   token = load("cnc-token");
   projectId = load("cnc-project");
   setMe(load("cnc-name"));
