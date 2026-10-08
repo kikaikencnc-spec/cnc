@@ -191,6 +191,8 @@ body:not(.booting) .booting-only { display: none; }
 .proc-pill { font-size: 12px; font-weight: 700; padding: 2px 10px; border-radius: 6px; background: var(--fg); color: var(--bg); white-space: nowrap; }
 .proc-pill.none { background: transparent; color: var(--muted); border: 1px dashed var(--line-strong); }
 .p-proc select { font-size: 12px; padding: 1px 4px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--muted); max-width: 100%; }
+/* 名前を自分で追加 */
+.add-member { border-top: 1px dashed var(--line); padding-top: 12px; display: flex; flex-direction: column; gap: 10px; }
 /* プロジェクト */
 .me-box { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
 .proj-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
@@ -269,12 +271,19 @@ body:not(.booting) .booting-only { display: none; }
     <form id="gate-name" autocomplete="off" hidden>
       <h2>あなたの名前を選んでください</h2>
       <p>加工済みにした人・登録した人を記録するために使います。選んだ名前はこのブラウザに記憶します。</p>
-      <p id="g-name-empty" hidden>メンバーがまだ登録されていません。管理者が「CNC加工タスク」スプレッドシートの members シートに名前を追加すると選べるようになります。</p>
+      <p id="g-name-empty" hidden>まだ誰も登録されていません。下の欄で自分の名前を追加してください。</p>
       <div class="field" id="g-name-field"><label for="g-name">名前</label><select id="g-name" required></select></div>
-      <div class="form-actions">
+      <div class="form-actions" id="g-name-actions">
         <button class="btn primary" id="g-name-submit" type="submit">この名前で使う</button>
         <button class="btn" id="g-name-cancel" type="button" hidden>キャンセル</button>
-        <span class="msg">一覧に名前が無いときは、管理者に追加を頼んでください。</span>
+      </div>
+      <div class="add-member">
+        <div class="field"><label for="g-new-name">一覧に名前がないときは、自分で追加</label><input id="g-new-name" maxlength="20" placeholder="例: 山田 太郎"></div>
+        <p>同じ名字の人がいるときは、<b>下の名前まで</b>入れてください（名字と名前の間に空白）。</p>
+        <div class="form-actions">
+          <button class="btn" id="g-new-submit" type="button">追加してこの名前で使う</button>
+          <span class="msg" id="g-new-msg" role="status" aria-live="polite"></span>
+        </div>
       </div>
     </form>
     <form id="gate-project" autocomplete="off" hidden>
@@ -358,7 +367,7 @@ body:not(.booting) .booting-only { display: none; }
 </div>
 
 <script async src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script>window.CNC_API_URL = "https://script.google.com/macros/s/AKfycbzG0rqrxeCfHqBO56nabBBjuAPPg1CUwbHo9tm_4wfaStB5TYClO_L_YvzGN9crI0bz/exec"; window.CNC_BUILD = "2026-10-08 22:06:29";</script>
+<script>window.CNC_API_URL = "https://script.google.com/macros/s/AKfycbzG0rqrxeCfHqBO56nabBBjuAPPg1CUwbHo9tm_4wfaStB5TYClO_L_YvzGN9crI0bz/exec"; window.CNC_BUILD = "2026-10-08 22:16:18";</script>
 <script>
 (function () {
   var NO_MAT = "材質未設定";
@@ -559,7 +568,7 @@ body:not(.booting) .booting-only { display: none; }
     s.value = members.indexOf(cur) >= 0 ? cur : "";
     $("g-name-empty").hidden = members.length > 0;
     $("g-name-field").hidden = !members.length;
-    $("g-name-submit").disabled = !members.length;
+    $("g-name-submit").hidden = !members.length;
   }
   function showGate(kind) {
     gate = kind;
@@ -601,6 +610,40 @@ body:not(.booting) .booting-only { display: none; }
     render();
   });
   $("g-name-cancel").addEventListener("click", function () { hideGate(); });
+
+  /* 名前を自分で追加する。同じ名字の人がいれば下の名前まで入れてもらう（Data.gs の memberConflict_ と同じ規則） */
+  function memberConflict(name, names) {
+    var norm = function (s) { return String(s).replace(/[\s\u3000]+/g, ""); };
+    var n = norm(name), single = !/[\s\u3000]/.test(String(name).trim());
+    for (var i = 0; i < names.length; i++) {
+      var en = norm(names[i]);
+      if (en === n) return "「" + names[i] + "」はもう登録されています。自分なら上の一覧から選んでください。別の人なら、下の名前まで入れてください（名字と名前の間に空白）。";
+      if (single && en.indexOf(n) === 0) return "同じ名字の「" + names[i] + "」さんがいます。区別できるよう、下の名前まで入れてください（名字と名前の間に空白）。";
+    }
+    return "";
+  }
+  $("g-new-name").addEventListener("input", function () {
+    var v = this.value.trim();
+    var m = v ? memberConflict(v, members) : "";
+    say($("g-new-msg"), m, !!m);
+  });
+  $("g-new-name").addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); $("g-new-submit").click(); } });
+  $("g-new-submit").addEventListener("click", function () {
+    var name = $("g-new-name").value.trim().replace(/[\s\u3000]+/g, " "), msg = $("g-new-msg"), btn = this;
+    if (!name) { say(msg, "名前を入力してください。", true); $("g-new-name").focus(); return; }
+    var m = memberConflict(name, members);
+    if (m) { say(msg, m, true); $("g-new-name").focus(); return; }
+    btn.disabled = true; say(msg, "追加しています…");
+    call("api_addMember", token, name).then(function (added) {
+      $("g-new-name").value = ""; say(msg, "");
+      if (members.indexOf(added) < 0) members = members.concat([added]);
+      setMe(added);
+      if (!projectId) showGate("project"); else hideGate();
+      render();
+      return refresh();
+    }, function (err) { say(msg, errText(err), true); gateIfNeeded(err); })
+      .then(function () { btn.disabled = false; });
+  });
   $("me-change").addEventListener("click", function () { showGate("name"); });
 
   /* ---------- プロジェクト ---------- */
@@ -1083,7 +1126,7 @@ body:not(.booting) .booting-only { display: none; }
       s.appendChild(h("option", { value: "auto" }, "自動（ファイルから判定）"));
       PROCESSES.concat([NONE_PROC]).forEach(function (x) { s.appendChild(h("option", { value: x.id }, x.label)); });
     }
-    if (procFilter) s.value = procFilter;
+    s.value = "auto";
   }
 
   function render() {
@@ -1282,7 +1325,7 @@ body:not(.booting) .booting-only { display: none; }
     enqueueAdd({ projectId: projectId, process: proc, name: name, thickness: Math.round(t * 1000) / 1000, material: $("f-mat").value.trim(), qty: qty, mechanism: $("f-mech").value.trim(), note: $("f-note").value.trim() }, fs);
     /* 板厚・材質・機構は続けて同じものを入れることが多いので残す */
     say(msg, "");
-    $("f-name").value = ""; $("f-note").value = ""; $("f-qty").value = "1"; fi.value = "";
+    $("f-name").value = ""; $("f-note").value = ""; $("f-qty").value = "1"; fi.value = ""; $("f-proc").value = "auto";
     $("f-name").focus();
   });
 
