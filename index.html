@@ -245,6 +245,34 @@ form.add { display: flex; flex-direction: column; gap: 18px; }
 .assign-btn { font-size: 14px; font-weight: 700; padding: 5px 16px; border-radius: 999px; border: 2px solid var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--surface)); }
 .assign-btn:not(:disabled):hover { background: var(--accent); color: var(--on-accent); }
 .assign-btn:disabled { opacity: .5; cursor: not-allowed; }
+/* 数量の変更 */
+.p-meta button.qty { order: -1; border: 0; background: transparent; padding: 0; color: var(--fg); font: 700 20px/1.2 var(--mono); display: inline-flex; align-items: baseline; gap: 6px; cursor: pointer; }
+.p-meta button.qty:disabled { cursor: default; opacity: .6; }
+.qty-pen { font: 12px var(--sans); color: var(--accent); text-decoration: underline; }
+.p-meta button.qty:not(:disabled):hover .qty-pen { text-decoration: none; }
+.qty-edit { order: -1; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; font: 700 20px/1.2 var(--mono); }
+.qty-input { width: 5.5em; font: 600 16px var(--mono); padding: 3px 6px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface-2); }
+/* 期限の近さの色（赤: あと2日以内・期限切れ / 黄: 3〜6日 / 緑: 7〜13日 / 青: 14日以上） */
+:root { --urg-red: #c62828; --urg-yellow: #9a6a00; --urg-green: #1f7a3f; --urg-blue: #1d5fa8; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --urg-red: #ff6b6b; --urg-yellow: #f2c14e; --urg-green: #6cc592; --urg-blue: #7cb7ff; }
+}
+:root[data-theme="dark"] { --urg-red: #ff6b6b; --urg-yellow: #f2c14e; --urg-green: #6cc592; --urg-blue: #7cb7ff; }
+.part.urg-red { box-shadow: inset 5px 0 0 var(--urg-red); }
+.part.urg-yellow { box-shadow: inset 5px 0 0 var(--urg-yellow); }
+.part.urg-green { box-shadow: inset 5px 0 0 var(--urg-green); }
+.part.urg-blue { box-shadow: inset 5px 0 0 var(--urg-blue); }
+.group.urg-red { border-color: var(--urg-red); border-width: 2px; }
+.group.urg-yellow { border-color: var(--urg-yellow); border-width: 2px; }
+.due { display: inline-flex; align-items: baseline; gap: 6px; font-size: 12px; font-weight: 700; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--line-strong); color: var(--muted); background: transparent; white-space: nowrap; }
+button.due { cursor: pointer; }
+button.due:disabled { cursor: default; opacity: .6; }
+.due.red { color: var(--urg-red); border-color: var(--urg-red); background: color-mix(in srgb, var(--urg-red) 12%, var(--surface)); }
+.due.yellow { color: var(--urg-yellow); border-color: var(--urg-yellow); background: color-mix(in srgb, var(--urg-yellow) 14%, var(--surface)); }
+.due.green { color: var(--urg-green); border-color: var(--urg-green); background: color-mix(in srgb, var(--urg-green) 12%, var(--surface)); }
+.due.blue { color: var(--urg-blue); border-color: var(--urg-blue); background: color-mix(in srgb, var(--urg-blue) 12%, var(--surface)); }
+.p-due { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 2px; }
+.due-input { font: 600 14px var(--mono); padding: 3px 6px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface-2); }
 /* 部品を登録した人 */
 .p-by { font-size: 12px; color: var(--muted); }
 
@@ -350,6 +378,7 @@ form.add { display: flex; flex-direction: column; gap: 18px; }
           <div class="field" data-forms="pipe"><label for="f-len">長さ (mm)</label><input id="f-len" class="mono" type="number" inputmode="decimal" step="1" min="0" max="10000" placeholder="例: 300"></div>
           <div class="field"><label for="f-mat">材質</label><input id="f-mat" list="mat-list" maxlength="30" placeholder="例: A5052"></div>
           <div class="field"><label for="f-qty">数量</label><input id="f-qty" class="mono" type="number" inputmode="numeric" step="1" min="1" max="999" value="1"></div>
+          <div class="field"><label for="f-due">いつまでに（任意）</label><input id="f-due" class="mono" type="date"></div>
           <div class="field wide"><label for="f-name">部品名</label><input id="f-name" maxlength="80" placeholder="ファイルを選ぶと、ファイル名から入ります"></div>
           <div class="field"><label for="f-mech">要求元の機構</label><input id="f-mech" list="mech-list" maxlength="40" placeholder="例: 足回り"></div>
           <div class="field wide"><label for="f-note">備考</label><input id="f-note" maxlength="200" placeholder="例: 穴径は図面の公差どおり"></div>
@@ -413,7 +442,7 @@ form.add { display: flex; flex-direction: column; gap: 18px; }
 </div>
 
 <script async src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script>window.CNC_API_URL = "https://script.google.com/macros/s/AKfycbzG0rqrxeCfHqBO56nabBBjuAPPg1CUwbHo9tm_4wfaStB5TYClO_L_YvzGN9crI0bz/exec"; window.CNC_BUILD = "2026-10-08 23:41:25";</script>
+<script>window.CNC_API_URL = "https://script.google.com/macros/s/AKfycbzG0rqrxeCfHqBO56nabBBjuAPPg1CUwbHo9tm_4wfaStB5TYClO_L_YvzGN9crI0bz/exec"; window.CNC_BUILD = "2026-10-09 00:43:47";</script>
 <script>
 (function () {
   var NO_MAT = "材質未設定";
@@ -459,6 +488,7 @@ form.add { display: flex; flex-direction: column; gap: 18px; }
     if (f !== "print") bits.push(stockLabel(p));
     if (f === "pipe") bits.push("L" + fmtT(p.length) + "mm");
     bits.push(matOf(p));
+    if (p.due) bits.push(dueMD(p.due) + "まで");
     return bits.join("・");
   }
   var MAX_BYTES = 20 * 1024 * 1024;
@@ -480,6 +510,8 @@ form.add { display: flex; flex-direction: column; gap: 18px; }
   var token = "", me = "", projectId = "", projects = [];
   var ready = false, gate = null;
   var busy = {}, camBusy = {}, saving = {}, deleting = {};
+  var editQty = {}, focusQty = "";
+  var editDue = {}, focusDue = ""; /* 期限を書き換え中の部品（id → 入力中の値） */ /* 数量を書き換え中の部品（id → 入力中の値）と、入力欄にフォーカスを移す部品 */
   var sel = new Set();
   var zipping = false, zipLabel = "", marking = false;
   var dateFmt = new Intl.DateTimeFormat("ja-JP", { month: "numeric", day: "numeric" });
@@ -990,7 +1022,7 @@ form.add { display: flex; flex-direction: column; gap: 18px; }
     if (typeof JSZip === "undefined") { showNotice("zip作成用の部品を読み込めませんでした。ページを開き直してください。"); return; }
     zipping = true; zipLabel = ""; updateBar();
     var z = new JSZip();
-    var rows = [["加工の種類", "板厚・肉厚(mm)", "断面", "長さ(mm)", "材質", "部品名", "数量", "機構", "備考", "ファイル"]];
+    var rows = [["加工の種類", "板厚・肉厚(mm)", "断面", "長さ(mm)", "材質", "部品名", "数量", "期限", "機構", "備考", "ファイル"]];
     var noCam = [], failed = [], jobs = [];
     var groups = unique(list.map(groupKey));
     var procs = unique(list.map(procOf));
@@ -998,7 +1030,7 @@ form.add { display: flex; flex-direction: column; gap: 18px; }
       .forEach(function (p) {
         var dir = (procs.length > 1 ? safe(procInfo(procOf(p)).label) + "/" : "") + stockDir(p) + "/" + safe(p.name) + (formOf(p) === "pipe" ? "_L" + fmtT(p.length) : "") + "_x" + (p.qty || 1) + (p.mechanism ? "_" + safe(p.mechanism) : "") + "/";
         var files = camsOf(p.id);
-        rows.push([procInfo(procOf(p)).label, p.thickness == null ? "" : fmtT(p.thickness), p.section || "", p.length == null ? "" : fmtT(p.length), matOf(p), p.name, p.qty || 1, p.mechanism || "", p.note || "", files.map(function (c) { return c.name; }).join(" / ")]);
+        rows.push([procInfo(procOf(p)).label, p.thickness == null ? "" : fmtT(p.thickness), p.section || "", p.length == null ? "" : fmtT(p.length), matOf(p), p.name, p.qty || 1, p.due || "", p.mechanism || "", p.note || "", files.map(function (c) { return c.name; }).join(" / ")]);
         if (!files.length) noCam.push(p.name);
         var used = {};
         files.forEach(function (c) {
@@ -1169,6 +1201,78 @@ form.add { display: flex; flex-direction: column; gap: 18px; }
     svg.appendChild(path);
     return svg;
   }
+  /* ---------- 期限（いつまでに欲しいか） ---------- */
+  /* 残り日数ごとの色。max 日以内ならその色（期限切れはマイナスなので赤） */
+  var URGENCY = [{ max: 2, cls: "red" }, { max: 6, cls: "yellow" }, { max: 13, cls: "green" }, { max: Infinity, cls: "blue" }];
+  function dueDate(due) { var p = due.split("-"); return new Date(+p[0], +p[1] - 1, +p[2]); }
+  function daysLeft(due) {
+    if (!due) return null;
+    var t = new Date(); t.setHours(0, 0, 0, 0);
+    return Math.round((dueDate(due) - t) / 86400000);
+  }
+  function urgency(due) {
+    var n = daysLeft(due);
+    if (n == null) return "";
+    for (var i = 0; i < URGENCY.length; i++) if (n <= URGENCY[i].max) return URGENCY[i].cls;
+    return "";
+  }
+  function dueMD(due) { var d = dueDate(due); return (d.getMonth() + 1) + "/" + d.getDate() + "（" + "日月火水木金土".charAt(d.getDay()) + "）"; }
+  function dueText(due) {
+    var n = daysLeft(due);
+    return dueMD(due) + "まで・" + (n < 0 ? -n + "日過ぎ" : n === 0 ? "今日" : n === 1 ? "明日" : "あと" + n + "日");
+  }
+  function dueKey(p) { return p.due || "9999-12-31"; }
+  function dueBlock(p, off) {
+    var start = function () { editDue[p.id] = p.due || ""; focusDue = p.id; render(); };
+    if (editDue[p.id] != null) {
+      var cancel = function () { delete editDue[p.id]; render(); };
+      return h("div", { class: "p-due" },
+        h("input", { id: "due-" + p.id, class: "due-input", type: "date", value: editDue[p.id], "aria-label": "期限: " + p.name,
+          oninput: function (e) { editDue[p.id] = e.target.value; },
+          onkeydown: function (e) { if (e.key === "Enter") { e.preventDefault(); saveDue(p); } else if (e.key === "Escape") { cancel(); } } }),
+        h("button", { class: "btn small primary", type: "button", onclick: function () { saveDue(p); } }, "保存"),
+        p.due ? h("button", { class: "btn small", type: "button", onclick: function () { editDue[p.id] = ""; saveDue(p); } }, "期限なしにする") : null,
+        h("button", { class: "btn small", type: "button", onclick: cancel }, "やめる"));
+    }
+    if (!p.due) return p.status === "done" ? null : h("div", { class: "p-due" }, h("button", { class: "linkbtn", type: "button", disabled: off, onclick: start }, "＋ 期限を決める"));
+    var u = p.status === "done" ? "" : urgency(p.due);
+    return h("div", { class: "p-due" }, h("button", { class: "due " + u, type: "button", disabled: off, title: "期限を変える", onclick: start },
+      "期限 " + (p.status === "done" ? dueMD(p.due) + "まで" : dueText(p.due)), h("span", { class: "qty-pen" }, "変更")));
+  }
+  function saveDue(p) {
+    var v = editDue[p.id] || "";
+    delete editDue[p.id];
+    if (v === (p.due || "")) { render(); return; }
+    var n = "「" + p.name + "」";
+    runOp([p.id], v ? { run: n + "の期限を" + dueMD(v) + "にしています…", done: n + "の期限を" + dueMD(v) + "にしました", fail: n + "の期限を変えられませんでした" }
+      : { run: n + "の期限をなくしています…", done: n + "の期限をなくしました", fail: n + "の期限を変えられませんでした" },
+      [function () { return call("api_updatePart", token, p.id, { due: v }, me); }]);
+  }
+
+  /* 数量: 「×4」を押すと入力欄になり、保存で変える */
+  function qtyBlock(p, off) {
+    if (editQty[p.id] == null) {
+      return h("button", { class: "qty", type: "button", disabled: off, title: "数量を変える", "aria-label": "数量 " + (p.qty || 1) + "（押すと変更）: " + p.name,
+        onclick: function () { editQty[p.id] = String(p.qty || 1); focusQty = p.id; render(); } },
+        "×" + (p.qty || 1), h("span", { class: "qty-pen" }, "変更"));
+    }
+    var cancel = function () { delete editQty[p.id]; render(); };
+    return h("span", { class: "qty-edit" }, "×",
+      h("input", { id: "qty-" + p.id, class: "qty-input", type: "number", inputmode: "numeric", min: "1", max: "999", step: "1", value: editQty[p.id], "aria-label": "数量: " + p.name,
+        oninput: function (e) { editQty[p.id] = e.target.value; },
+        onkeydown: function (e) { if (e.key === "Enter") { e.preventDefault(); saveQty(p); } else if (e.key === "Escape") { cancel(); } } }),
+      h("button", { class: "btn small primary", type: "button", onclick: function () { saveQty(p); } }, "保存"),
+      h("button", { class: "btn small", type: "button", onclick: cancel }, "やめる"));
+  }
+  function saveQty(p) {
+    var q = Number(editQty[p.id]);
+    if (!(Number.isInteger(q) && q >= 1 && q <= 999)) { showNotice("数量は1〜999の整数で入力してください。"); return; }
+    delete editQty[p.id];
+    if (q === p.qty) { render(); return; }
+    var n = "「" + p.name + "」";
+    runOp([p.id], { run: n + "の数量を" + p.qty + "から" + q + "に変えています…", done: n + "の数量を" + q + "にしました", fail: n + "の数量を変えられませんでした" },
+      [function () { return call("api_updatePart", token, p.id, { qty: q }, me); }]);
+  }
   function partRow(p) {
     var done = p.status === "done";
     var off = !!busy[p.id];
@@ -1182,7 +1286,7 @@ form.add { display: flex; flex-direction: column; gap: 18px; }
     var depth = 0;
     function hasFiles(e) { return e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types, "Files") >= 0; }
     return h("li", {
-        class: "part" + (done ? " is-done" : "") + (picked ? " picked" : ""),
+        class: "part" + (done ? " is-done" : "") + (picked ? " picked" : "") + (!done && p.due ? " urg-" + urgency(p.due) : ""),
         ondragenter: function (e) { if (hasFiles(e)) { e.preventDefault(); depth++; e.currentTarget.classList.add("dropping"); } },
         ondragover: function (e) { if (hasFiles(e)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } },
         ondragleave: function (e) { if (--depth <= 0) { depth = 0; e.currentTarget.classList.remove("dropping"); } },
@@ -1200,8 +1304,9 @@ form.add { display: flex; flex-direction: column; gap: 18px; }
         h("span", { class: "p-name" }, p.name),
         h("span", { class: "p-meta" },
           p.mechanism ? h("span", null, p.mechanism) : null,
-          h("span", { class: "qty" }, "×" + (p.qty || 1)),
+          qtyBlock(p, off),
           formOf(p) === "pipe" ? h("span", { class: "len" }, "L" + fmtT(p.length) + "mm") : null),
+        dueBlock(p, off),
         assignBlock(p, off),
         procBlock(p, off),
         p.note ? h("span", { class: "p-note" }, p.note) : null,
@@ -1344,15 +1449,20 @@ form.add { display: flex; flex-direction: column; gap: 18px; }
     }
     var byG = {};
     scoped.forEach(function (p) { var k = groupKey(p); (byG[k] = byG[k] || []).push(p); });
+    /* 区画は、中の未加工の部品の一番近い期限が早い順（期限なしは最後） */
+    var nearest = {};
+    Object.keys(byG).forEach(function (k) {
+      nearest[k] = byG[k].filter(function (p) { return p.status !== "done" && p.due; }).map(dueKey).sort()[0] || "";
+    });
     var keys = Object.keys(byG).sort(function (a, b) {
       var A = a.split("|"), B = b.split("|");
       var ma = A.slice(2).join("|"), mb = B.slice(2).join("|");
-      return procOrder(A[0]) - procOrder(B[0]) || cmpMid(A[1], B[1]) || (ma === NO_MAT) - (mb === NO_MAT) || ma.localeCompare(mb, "ja");
+      return (nearest[a] || "9999-12-31").localeCompare(nearest[b] || "9999-12-31") || procOrder(A[0]) - procOrder(B[0]) || cmpMid(A[1], B[1]) || (ma === NO_MAT) - (mb === NO_MAT) || ma.localeCompare(mb, "ja");
     });
     var shown = 0;
     keys.forEach(function (k) {
       var items = byG[k], kp = k.split("|"), proc = procInfo(kp[0]), mat = kp.slice(2).join("|"), p0 = items[0], form = formOf(p0);
-      var gt = items.filter(function (p) { return p.status !== "done"; }).sort(function (a, b) { return (a.createdAt || 0) - (b.createdAt || 0); });
+      var gt = items.filter(function (p) { return p.status !== "done"; }).sort(function (a, b) { return dueKey(a).localeCompare(dueKey(b)) || (a.createdAt || 0) - (b.createdAt || 0); });
       var gd = items.filter(function (p) { return p.status === "done"; }).sort(function (a, b) { return (b.doneAt || 0) - (a.doneAt || 0); });
       var showT = view !== "done" && gt.length, showD = view !== "todo" && gd.length;
       if (!showT && !showD) return;
@@ -1366,14 +1476,15 @@ form.add { display: flex; flex-direction: column; gap: 18px; }
         h("span", { class: "g-mat" + (mat === NO_MAT ? " none" : "") }, mat),
         h("div", { class: "g-meta" },
           h("span", { class: "pill todo" }, "未加工 " + gt.length + "点/" + sumQty(gt) + "個"),
-          h("span", { class: "pill done" }, "加工済み " + gd.length + "点/" + sumQty(gd) + "個")));
+          h("span", { class: "pill done" }, "加工済み " + gd.length + "点/" + sumQty(gd) + "個"),
+          nearest[k] ? h("span", { class: "due " + urgency(nearest[k]) }, "最短 " + dueText(nearest[k])) : null));
       if (showT) {
         var gid = "gpick-" + k.replace(/[^\w.-]/g, "_");
         head.appendChild(h("label", { class: "g-pick", for: gid },
           h("input", { type: "checkbox", id: gid, checked: nSel === gt.length, indeterminate: nSel > 0 && nSel < gt.length, onchange: function (e) { toggleGroup(gt, e.target.checked); } }),
           nSel ? nSel + "/" + gt.length + " 選択中" : "未加工をすべて選択"));
       }
-      var g = h("section", { class: "group", "aria-label": proc.label + " " + stockLabel(p0) + " " + mat }, head);
+      var g = h("section", { class: "group" + (nearest[k] ? " urg-" + urgency(nearest[k]) : ""), "aria-label": proc.label + " " + stockLabel(p0) + " " + mat }, head);
       if (showT) {
         g.appendChild(h("div", { class: "sub todo" }, h("span", null, "未加工"), h("span", null, gt.length + "点")));
         g.appendChild(h("ul", { class: "parts" }, gt.map(partRow)));
@@ -1388,6 +1499,14 @@ form.add { display: flex; flex-direction: column; gap: 18px; }
       root.appendChild(h("div", { class: "empty" },
         h("strong", null, view === "todo" ? "未加工の部品はありません" : view === "done" ? "加工済みの部品はまだありません" : "この条件に合う部品はありません"),
         h("span", null, view === "todo" ? "すべて加工済みです。" : "表示する状態や機構を切り替えてください。")));
+    }
+    if (focusQty) {
+      var qi = $("qty-" + focusQty); focusQty = "";
+      if (qi) { qi.focus(); qi.select(); }
+    }
+    if (focusDue) {
+      var di = $("due-" + focusDue); focusDue = "";
+      if (di) di.focus();
     }
   }
 
@@ -1527,7 +1646,8 @@ form.add { display: flex; flex-direction: column; gap: 18px; }
       projectId: projectId, process: formProc, name: name,
       thickness: form === "print" ? null : Math.round(t * 1000) / 1000,
       section: form === "pipe" ? sec : "", length: form === "pipe" ? Math.round(len * 10) / 10 : null,
-      material: $("f-mat").value.trim(), qty: qty, mechanism: $("f-mech").value.trim(), note: $("f-note").value.trim()
+      material: $("f-mat").value.trim(), qty: qty, mechanism: $("f-mech").value.trim(), note: $("f-note").value.trim(),
+      due: $("f-due").value || ""
     }, fs);
     /* 次の部品へ: ファイル・部品名・数量・備考は空に、加工の種類は選び直し（ファイルから自動で判定するため）。
        板厚・材質・機構などは続けて同じものを使うことが多いので残す */
