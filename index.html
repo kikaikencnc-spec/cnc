@@ -413,7 +413,7 @@ form.add { display: flex; flex-direction: column; gap: 18px; }
 </div>
 
 <script async src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script>window.CNC_API_URL = "https://script.google.com/macros/s/AKfycbzG0rqrxeCfHqBO56nabBBjuAPPg1CUwbHo9tm_4wfaStB5TYClO_L_YvzGN9crI0bz/exec"; window.CNC_BUILD = "2026-10-08 23:06:59";</script>
+<script>window.CNC_API_URL = "https://script.google.com/macros/s/AKfycbzG0rqrxeCfHqBO56nabBBjuAPPg1CUwbHo9tm_4wfaStB5TYClO_L_YvzGN9crI0bz/exec"; window.CNC_BUILD = "2026-10-08 23:16:55";</script>
 <script>
 (function () {
   var NO_MAT = "材質未設定";
@@ -567,7 +567,11 @@ form.add { display: flex; flex-direction: column; gap: 18px; }
   /* サーバーが投げた日本語のメッセージはそのまま出す。それ以外（通信エラーなど）は fallback */
   function errText(e, fallback) {
     var m = cleanMsg(e);
-    return /[぀-ヿ一-鿿]/.test(m) ? m : (fallback || "保存できませんでした。通信状況を確認してもう一度お試しください。");
+    if (/[぀-ヿ一-鿿]/.test(m)) return m;
+    var base = fallback || "保存できませんでした。通信状況を確認してもう一度お試しください。";
+    var name = e && e.name && e.name !== "Error" ? e.name : "";
+    var detail = (name && m.indexOf(name) < 0 ? name + ": " : "") + m;
+    return detail ? base + "（詳細: " + detail.slice(0, 120) + "）" : base;
   }
   function handleErr(e, fallback) {
     var m = cleanMsg(e);
@@ -850,15 +854,27 @@ form.add { display: flex; flex-direction: column; gap: 18px; }
     });
     inp.click();
   }
+  /* ファイルの中身を今すぐ読み始めておく。順番待ちの間にブラウザがファイルを読めなくなる
+     （連続で追加すると2つ目以降が「読めない」で失敗する）のを防ぐため */
+  function snapFile(f) {
+    if (f.data) return f;
+    var data = f.size > MAX_BYTES ? Promise.reject(new Error("ファイルが大きすぎます。1ファイル20MBまでです。"))
+      : fileToB64(f).catch(function (e) {
+        throw new Error("ファイルを読み込めませんでした。ファイルを選び直して、行の「＋ ファイルを添付」から付け直してください。（" + ((e && e.name) || "読み込みエラー") + "）");
+      });
+    data.catch(function () {}); /* 失敗はアップロードの順番が来たときに知らせる */
+    return { name: f.name, size: f.size, data: data };
+  }
   function uploadOne(p, f) {
-    if (f.size > MAX_BYTES) return Promise.reject(new Error("ファイルが大きすぎます。1ファイル20MBまでです。"));
-    return fileToB64(f).then(function (b64) {
+    f = snapFile(f);
+    return f.data.then(function (b64) {
       return call("api_uploadFile", token, p.id, f.name, MIME[extOf(f.name)] || "application/octet-stream", b64, me);
     });
   }
   /* 1ファイルずつ順番に送る */
   function uploadCam(p, files) {
     if (camBusy[p.id]) return;
+    files = files.map(snapFile);
     camBusy[p.id] = true; render();
     var chain = Promise.resolve();
     files.forEach(function (f) {
@@ -1258,7 +1274,7 @@ form.add { display: flex; flex-direction: column; gap: 18px; }
     unique(same.map(function (p) { return p.section || ""; })).sort(byJa).forEach(function (m) { sl.appendChild(h("option", { value: m })); });
   }
   function setFormFiles(list) {
-    formFiles = list;
+    formFiles = list.map(snapFile); /* 選んだ・ドラッグした瞬間に中身を読み込む（一時ファイルがすぐ消える場合があるため） */
     var ul = $("f-list"); ul.textContent = "";
     list.forEach(function (f) {
       var ext = extOf(f.name);
@@ -1504,9 +1520,9 @@ form.add { display: flex; flex-direction: column; gap: 18px; }
     if (form === "pipe" && !(len > 0 && len <= 10000)) { say(msg, "長さは0より大きい数値（mm）で入力してください。", true); $("f-len").focus(); return; }
     if (!(Number.isInteger(qty) && qty >= 1 && qty <= 999)) { say(msg, "数量は1〜999の整数で入力してください。", true); $("f-qty").focus(); return; }
     if (!name) { say(msg, "部品名を入力してください。", true); $("f-name").focus(); return; }
-    var fs = formFiles.slice();
-    var big = fs.filter(function (f) { return f.size > MAX_BYTES; });
+    var big = formFiles.filter(function (f) { return f.size > MAX_BYTES; });
     if (big.length) { say(msg, "ファイルが大きすぎます（1ファイル20MBまで）: " + big.map(function (f) { return f.name; }).join("、"), true); return; }
+    var fs = formFiles.slice(); /* 中身は選んだときに読み込み済み */
     enqueueAdd({
       projectId: projectId, process: formProc, name: name,
       thickness: form === "print" ? null : Math.round(t * 1000) / 1000,
