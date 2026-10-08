@@ -413,7 +413,7 @@ form.add { display: flex; flex-direction: column; gap: 18px; }
 </div>
 
 <script async src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script>window.CNC_API_URL = "https://script.google.com/macros/s/AKfycbzG0rqrxeCfHqBO56nabBBjuAPPg1CUwbHo9tm_4wfaStB5TYClO_L_YvzGN9crI0bz/exec"; window.CNC_BUILD = "2026-10-08 23:16:55";</script>
+<script>window.CNC_API_URL = "https://script.google.com/macros/s/AKfycbzG0rqrxeCfHqBO56nabBBjuAPPg1CUwbHo9tm_4wfaStB5TYClO_L_YvzGN9crI0bz/exec"; window.CNC_BUILD = "2026-10-08 23:41:25";</script>
 <script>
 (function () {
   var NO_MAT = "材質未設定";
@@ -823,12 +823,38 @@ form.add { display: flex; flex-direction: column; gap: 18px; }
   }
 
   /* ---------- 部品の読み書き ---------- */
-  function setStatus(p, status) {
-    if (busy[p.id]) return Promise.resolve();
-    busy[p.id] = true; render();
-    return call("api_setStatus", token, [p.id], status, me).catch(function (e) { handleErr(e); })
+  /* 画面下に「〜しています…」を出して操作する（削除・アップロードと同じ）。ids の部品は処理中にし、終わったら最新を取り直す。
+     steps はサーバーを呼ぶ関数の並び（順番に実行）。失敗したら「やり直す」で最初からやり直す（同じ操作を繰り返しても大丈夫な API にしてある） */
+  function runOp(ids, labels, steps, j) {
+    if (ids.some(function (id) { return busy[id]; })) return Promise.resolve();
+    ids.forEach(function (id) { busy[id] = true; });
+    render();
+    j = j || newJob();
+    j.retry = function () { runOp(ids, labels, steps, j); };
+    setJob(j, "run", labels.run);
+    var chain = Promise.resolve();
+    steps.forEach(function (st, k) {
+      chain = chain.then(function () {
+        if (steps.length > 1) setJob(j, "run", labels.run + "（" + (k + 1) + "/" + steps.length + "）");
+        return st();
+      });
+    });
+    return chain.then(function () { finishJob(j, labels.done); },
+      function (e) { setJob(j, "error", labels.fail + ": " + errText(e)); gateIfNeeded(e); })
       .then(refresh)
-      .then(function () { delete busy[p.id]; render(); });
+      .then(function () { ids.forEach(function (id) { delete busy[id]; }); render(); });
+  }
+  function inChunks(ids, size, fn) {
+    var out = [];
+    for (var i = 0; i < ids.length; i += size) (function (c) { out.push(function () { return fn(c); }); })(ids.slice(i, i + size));
+    return out;
+  }
+  function setStatus(p, status) {
+    var n = "「" + p.name + "」";
+    return runOp([p.id], status === "done"
+      ? { run: n + "を加工済みにしています…", done: n + "を加工済みにしました", fail: n + "を加工済みにできませんでした" }
+      : { run: n + "を未加工に戻しています…", done: n + "を未加工に戻しました", fail: n + "を未加工に戻せませんでした" },
+      [function () { return call("api_setStatus", token, [p.id], status, me); }]);
   }
   /* 削除は画面下に「削除しています…」を出し、失敗したらやり直せるようにする */
   function remove(p, j) {
@@ -1005,40 +1031,26 @@ form.add { display: flex; flex-direction: column; gap: 18px; }
   }
   /* ---------- 担当者（誰がやるか） ---------- */
   function assign(p, value) {
-    if (busy[p.id]) return;
-    busy[p.id] = true; render();
-    call("api_setAssignee", token, [p.id], value, me).catch(function (e) { handleErr(e); })
-      .then(refresh)
-      .then(function () { delete busy[p.id]; render(); });
+    var n = "「" + p.name + "」";
+    var labels = !value ? { run: n + "の担当をやめています…", done: n + "の担当をやめました", fail: n + "の担当をやめられませんでした" }
+      : p.assignee && p.assignee !== me ? { run: n + "の担当を代わっています…", done: n + "の担当を代わりました", fail: n + "の担当を代われませんでした" }
+      : { run: n + "の担当に立候補しています…", done: n + "の担当になりました", fail: n + "の担当になれませんでした" };
+    runOp([p.id], labels, [function () { return call("api_setAssignee", token, [p.id], value, me); }]);
   }
   function assignSelected() {
     if (marking) return;
     var list = selectedParts().filter(function (p) { return p.status !== "done" && p.assignee !== me; });
     if (!list.length) return;
-    marking = true;
-    list.forEach(function (p) { busy[p.id] = true; });
-    render();
-    var chain = Promise.resolve(), ok = true;
-    for (var i = 0; i < list.length; i += 50) {
-      (function (ids) {
-        chain = chain.then(function () {
-          if (!ok) return;
-          return call("api_setAssignee", token, ids, me, me).catch(function (e) { ok = false; handleErr(e); });
-        });
-      })(list.slice(i, i + 50).map(function (p) { return p.id; }));
-    }
-    chain.then(refresh).then(function () {
-      list.forEach(function (p) { delete busy[p.id]; });
-      marking = false;
-      render();
-    });
+    var ids = list.map(function (p) { return p.id; });
+    marking = true; updateBar();
+    runOp(ids, { run: list.length + "点の担当に立候補しています…", done: list.length + "点の担当になりました", fail: "担当になれなかった部品があります" },
+      inChunks(ids, 50, function (c) { return call("api_setAssignee", token, c, me, me); }))
+      .then(function () { marking = false; render(); });
   }
   function setProcess(p, value) {
-    if (busy[p.id]) return;
-    busy[p.id] = true; render();
-    call("api_updatePart", token, p.id, { process: value }, me).catch(function (e) { handleErr(e); })
-      .then(refresh)
-      .then(function () { delete busy[p.id]; render(); });
+    var n = "「" + p.name + "」", to = procInfo(value).label;
+    runOp([p.id], { run: n + "を" + to + "に変えています…", done: n + "を" + to + "に変えました", fail: n + "の加工の種類を変えられませんでした" },
+      [function () { return call("api_updatePart", token, p.id, { process: value }, me); }]);
   }
   /* 入力項目が同じ型の種類どうし（CNC ⇔ レーザー ⇔ 未分類）だけ切り替えられる */
   function procBlock(p, off) {
@@ -1077,23 +1089,11 @@ form.add { display: flex; flex-direction: column; gap: 18px; }
     if (marking) return;
     var list = selectedParts().filter(function (p) { return p.status !== "done"; });
     if (!list.length) return;
-    marking = true;
-    list.forEach(function (p) { busy[p.id] = true; });
-    render();
-    var chain = Promise.resolve(), ok = true;
-    for (var i = 0; i < list.length; i += STATUS_CHUNK) {
-      (function (ids) {
-        chain = chain.then(function () {
-          if (!ok) return;
-          return call("api_setStatus", token, ids, "done", me).catch(function (e) { ok = false; handleErr(e); });
-        });
-      })(list.slice(i, i + STATUS_CHUNK).map(function (p) { return p.id; }));
-    }
-    chain.then(refresh).then(function () {
-      list.forEach(function (p) { delete busy[p.id]; });
-      marking = false;
-      render();
-    });
+    var ids = list.map(function (p) { return p.id; });
+    marking = true; updateBar();
+    runOp(ids, { run: list.length + "点を加工済みにしています…", done: list.length + "点を加工済みにしました", fail: "加工済みにできなかった部品があります" },
+      inChunks(ids, STATUS_CHUNK, function (c) { return call("api_setStatus", token, c, "done", me); }))
+      .then(function () { marking = false; render(); });
   }
   function updateBar() {
     var list = gate ? [] : selectedParts();
