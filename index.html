@@ -227,6 +227,12 @@ form.add { display: flex; flex-direction: column; gap: 18px; }
 .proj-list .pj-name { font-weight: 700; overflow-wrap: anywhere; }
 .proj-list .pj-meta { font-size: 12px; color: var(--muted); flex: 1; min-width: 0; }
 .proj-list .pj-btns { display: flex; gap: 8px; align-items: center; }
+/* プロジェクトの Slack 通知先 */
+.proj-list li { flex-wrap: wrap; }
+.pj-slack { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 13px; }
+.pj-slack-lbl { font-size: 12px; color: var(--muted); }
+.slack-ch { font-family: var(--mono); }
+.slack-input { font: 13px var(--mono); padding: 4px 8px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface-2); min-width: 0; width: 16em; max-width: 100%; }
 /* 担当者（誰がやるか） */
 .filters { display: flex; flex-wrap: wrap; gap: 8px 16px; }
 .p-assign { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 2px; font-size: 13px; }
@@ -283,6 +289,19 @@ button.due:disabled { cursor: default; opacity: .6; }
 :root[data-theme="dark"] { --logo: #f5913e; }
 /* 見出しの名前（Kakkou）に添える説明 */
 header h1 .h1-sub { font-size: 13px; font-weight: 500; color: var(--muted); margin-left: 6px; letter-spacing: .04em; }
+/* 部品の画像とだいたいの大きさ */
+.p-top { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
+.p-titles { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.p-thumb { flex: none; width: 56px; height: 56px; border-radius: 8px; border: 1px solid var(--line); background: #fff; padding: 2px; cursor: zoom-in; object-fit: contain; }
+.p-thumb.loading { background: var(--surface-2); cursor: default; }
+.p-size { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 2px; }
+.size-btn { display: inline-flex; align-items: baseline; gap: 6px; font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--line-strong); color: var(--fg); background: transparent; cursor: pointer; }
+.size-btn small { font-weight: 400; color: var(--muted); }
+.size-btn:disabled { cursor: default; opacity: .6; }
+.size-input { font: 13px var(--mono); padding: 3px 6px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface-2); width: 12em; max-width: 100%; }
+.thumb-dialog { border: 1px solid var(--line); border-radius: 12px; padding: 16px; background: var(--surface); color: var(--fg); max-width: min(92vw, 420px); }
+.thumb-dialog::backdrop { background: rgba(0, 0, 0, .5); }
+.thumb-dialog img { display: block; width: 100%; max-width: 360px; height: auto; margin: 0 auto 8px; background: #fff; border-radius: 8px; image-rendering: auto; }
 /* 部品を登録した人 */
 .p-by { font-size: 12px; color: var(--muted); }
 
@@ -354,6 +373,7 @@ header h1 .h1-sub { font-size: 13px; font-weight: 500; color: var(--muted); marg
       <p>選んだプロジェクトはこのブラウザに記憶し、次からは自動で開きます。右上の「切り替え」でいつでも変えられます。</p>
       <ul class="proj-list" id="proj-list"></ul>
       <p id="proj-empty" hidden>まだプロジェクトがありません。下の欄で作ってください。</p>
+      <p id="slack-note" hidden>Slack の通知は、管理者が Slack のボットのトークンを設定すると使えるようになります（通知先のチャンネルは先に決めておけます）。</p>
       <div class="field"><label for="g-proj-name">新しいプロジェクトを作る</label><input id="g-proj-name" maxlength="40" placeholder="例: NHK2027"></div>
       <div class="form-actions">
         <button class="btn primary" id="g-proj-submit" type="submit">作成して開く</button>
@@ -389,6 +409,7 @@ header h1 .h1-sub { font-size: 13px; font-weight: 500; color: var(--muted); marg
           <div class="field"><label for="f-mat">材質</label><input id="f-mat" list="mat-list" maxlength="30" placeholder="例: A5052"></div>
           <div class="field"><label for="f-qty">数量</label><input id="f-qty" class="mono" type="number" inputmode="numeric" step="1" min="1" max="999" value="1"></div>
           <div class="field"><label for="f-due">いつまでに（任意）</label><input id="f-due" class="mono" type="date"></div>
+          <div class="field" data-forms="plate print"><label for="f-size">だいたいの大きさ（任意）</label><input id="f-size" maxlength="30" placeholder="例: 120×80（自動で読めないとき）"></div>
           <div class="field wide"><label for="f-name">部品名</label><input id="f-name" maxlength="80" placeholder="ファイルを選ぶと、ファイル名から入ります"></div>
           <div class="field"><label for="f-mech">要求元の機構</label><input id="f-mech" list="mech-list" maxlength="40" placeholder="例: 足回り"></div>
           <div class="field wide"><label for="f-note">備考</label><input id="f-note" maxlength="200" placeholder="例: 穴径は図面の公差どおり"></div>
@@ -451,8 +472,395 @@ header h1 .h1-sub { font-size: 13px; font-weight: 500; color: var(--muted); marg
 </div>
 </div>
 
+<!-- 部品の画像の拡大表示（画面の処理より前に置く。後ろに置くと処理の開始時に見つからず止まる） -->
+<dialog id="thumb-dialog" class="thumb-dialog" aria-label="部品の画像"><img id="thumb-big" alt=""><p id="thumb-cap" class="msg"></p><button class="btn small" type="button" id="thumb-close">閉じる</button></dialog>
 <script async src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script>window.CNC_API_URL = "https://script.google.com/macros/s/AKfycbzG0rqrxeCfHqBO56nabBBjuAPPg1CUwbHo9tm_4wfaStB5TYClO_L_YvzGN9crI0bz/exec"; window.CNC_BUILD = "2026-10-09 01:11:38";</script>
+<script>
+/* 添付ファイルから、部品の画像とだいたいの大きさをブラウザの中で読み取る（Kakkou）。
+   ・.ipt / .iam … Inventor が保存時に入れる縮小画像（PNG）を取り出す（OLE 複合ファイルを開いて読む）
+   ・.stl        … 外側の箱（mm）と、斜め上から見た陰影つきの絵
+   ・.dxf        … 図形の範囲（mm）と、輪郭の図（線・円・円弧・ポリライン・スプライン）
+   ・.nc / .tap / .cnc … 削る動き（G1/G2/G3）の範囲と、その動きを上から見た図。工具の太さの分だけ大きめに出る
+   ・.png / .jpg / .gif / .webp … その画像を小さくしたもの
+   window.KakkouMeta.analyze(ファイル名, Uint8Array) → Promise<{ size?, src?, thumb?, thumbSrc? } | null>
+   画像の優先順位（サーバーの thumbRank_ と同じ）: .ipt/.iam > .stl > .dxf > 画像ファイル > G コード */
+(function (g) {
+  var KINDS = { ipt: "ole", iam: "ole", dxf: "dxf", stl: "stl", nc: "gcode", tap: "gcode", cnc: "gcode", png: "image", jpg: "image", jpeg: "image", gif: "image", webp: "image" };
+  var THUMB = 180; /* 作る画像の大きさ（px） */
+
+  function extOf(name) { var m = /\.([^.\/\\]+)$/.exec(String(name).toLowerCase()); return m ? m[1] : ""; }
+  function canRead(name) { return !!KINDS[extOf(name)]; }
+  function text(u8) { return new TextDecoder("latin1").decode(u8); }
+  function box() { return { minX: Infinity, minY: Infinity, minZ: Infinity, maxX: -Infinity, maxY: -Infinity, maxZ: -Infinity }; }
+  function put(b, x, y, z) {
+    if (isFinite(x)) { if (x < b.minX) b.minX = x; if (x > b.maxX) b.maxX = x; }
+    if (isFinite(y)) { if (y < b.minY) b.minY = y; if (y > b.maxY) b.maxY = y; }
+    if (z != null && isFinite(z)) { if (z < b.minZ) b.minZ = z; if (z > b.maxZ) b.maxZ = z; }
+  }
+  /* '120×80' / '40×30×25'（大きい順）。10mm 未満は小数1桁 */
+  function sizeText(dims) {
+    dims = dims.filter(function (d) { return isFinite(d) && d > 0.05; }).sort(function (a, b) { return b - a; });
+    if (!dims.length) return "";
+    return dims.map(function (d) { return d >= 10 ? String(Math.round(d)) : String(Math.round(d * 10) / 10); }).join("×");
+  }
+  function hasCanvas() { return typeof document !== "undefined" && !!document.createElement; }
+  function newCanvas() {
+    var c = document.createElement("canvas"); c.width = THUMB; c.height = THUMB;
+    var ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, THUMB, THUMB);
+    return { c: c, ctx: ctx };
+  }
+
+  /* ---------- OLE 複合ファイル（.ipt / .iam）---------- */
+  function oleStreams(u8) {
+    if (u8.length < 512) return null;
+    var dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+    if (dv.getUint32(0, true) !== 0xE011CFD0 || dv.getUint32(4, true) !== 0xE11AB1A1) return null;
+    var secSize = 1 << dv.getUint16(30, true), miniSize = 1 << dv.getUint16(32, true);
+    var nFat = dv.getUint32(44, true), dirStart = dv.getUint32(48, true), miniCutoff = dv.getUint32(56, true);
+    var miniFatStart = dv.getUint32(60, true), nMiniFat = dv.getUint32(64, true);
+    var difat = dv.getUint32(68, true), nDifat = dv.getUint32(72, true);
+    var END = 0xFFFFFFFA, per = secSize / 4;
+    function off(s) { return (s + 1) * secSize; }
+    var fatSecs = [];
+    for (var i = 0; i < 109 && fatSecs.length < nFat; i++) { var v = dv.getUint32(76 + i * 4, true); if (v >= END) break; fatSecs.push(v); }
+    for (var k = 0; k < nDifat && difat < END; k++) {
+      var o = off(difat);
+      for (var j = 0; j < per - 1 && fatSecs.length < nFat; j++) fatSecs.push(dv.getUint32(o + j * 4, true));
+      difat = dv.getUint32(o + secSize - 4, true);
+    }
+    var fat = new Uint32Array(fatSecs.length * per);
+    fatSecs.forEach(function (s, i) { for (var j = 0; j < per && off(s) + j * 4 + 4 <= u8.length; j++) fat[i * per + j] = dv.getUint32(off(s) + j * 4, true); });
+    function chain(start, table) { var out = [], s = start, guard = 0; while (s < END && s < table.length + 1 && guard++ < 2000000) { out.push(s); s = table[s]; } return out; }
+    function readBig(start, size) {
+      var secs = chain(start, fat), buf = new Uint8Array(secs.length * secSize);
+      secs.forEach(function (s, i) { buf.set(u8.subarray(off(s), Math.min(u8.length, off(s) + secSize)), i * secSize); });
+      return size == null ? buf : buf.subarray(0, size);
+    }
+    var dir = readBig(dirStart), entries = [];
+    for (var p = 0; p + 128 <= dir.length; p += 128) {
+      var nl = dir[p + 64] | (dir[p + 65] << 8), name = "";
+      for (var c = 0; c < Math.max(0, nl / 2 - 1); c++) name += String.fromCharCode(dir[p + c * 2] | (dir[p + c * 2 + 1] << 8));
+      var ev = new DataView(dir.buffer, dir.byteOffset + p, 128);
+      entries.push({ name: name, type: dir[p + 66], start: ev.getUint32(116, true), size: ev.getUint32(120, true) });
+    }
+    var root = entries[0], mini = root ? readBig(root.start, root.size) : new Uint8Array(0);
+    var miniFat = new Uint32Array(0);
+    if (nMiniFat) {
+      var mb = readBig(miniFatStart), mdv = new DataView(mb.buffer, mb.byteOffset, mb.byteLength);
+      miniFat = new Uint32Array(mb.length / 4);
+      for (var q = 0; q < miniFat.length; q++) miniFat[q] = mdv.getUint32(q * 4, true);
+    }
+    function read(e) {
+      if (e.size >= miniCutoff) return readBig(e.start, e.size);
+      var secs = chain(e.start, miniFat), buf = new Uint8Array(secs.length * miniSize);
+      secs.forEach(function (s, i) { buf.set(mini.subarray(s * miniSize, (s + 1) * miniSize), i * miniSize); });
+      return buf.subarray(0, e.size);
+    }
+    return { streams: entries.filter(function (e) { return e.type === 2; }), read: read };
+  }
+  function indexOf(u8, pat, from) {
+    outer: for (var i = from || 0; i <= u8.length - pat.length; i++) {
+      for (var j = 0; j < pat.length; j++) if (u8[i + j] !== pat[j]) continue outer;
+      return i;
+    }
+    return -1;
+  }
+  var PNG = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A], IEND = [0x49, 0x45, 0x4E, 0x44];
+  /* プロパティの入れ物（名前が \u0005 で始まるもの）の中の PNG のうち、いちばん大きいもの */
+  function oleThumbnail(u8) {
+    var ole = oleStreams(u8);
+    if (!ole) return null;
+    var best = null;
+    ole.streams.forEach(function (e) {
+      if (e.name.charCodeAt(0) !== 5 || e.size > 4000000) return;
+      var b = ole.read(e), i = indexOf(b, PNG, 0);
+      if (i < 0) return;
+      var j = indexOf(b, IEND, i);
+      if (j < 0) return;
+      var png = b.subarray(i, j + 8);
+      if (!best || png.length > best.length) best = png;
+    });
+    return best;
+  }
+
+  /* ---------- 線の図（DXF・G コード）: 点の並び（折れ線）の集まり ---------- */
+  function arcPoints(cx, cy, r, a0, a1, ccw) {
+    /* a0 → a1 を ccw（反時計回り）か時計回りに、およそ 6° ごとの点に分ける */
+    var sweep = ccw ? a1 - a0 : a0 - a1;
+    while (sweep <= 1e-9) sweep += Math.PI * 2;
+    var n = Math.max(2, Math.ceil(sweep / (Math.PI / 30))), pts = [];
+    for (var i = 0; i <= n; i++) {
+      var a = a0 + (ccw ? 1 : -1) * sweep * i / n;
+      pts.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
+    }
+    return pts;
+  }
+  function linesBox(lines) {
+    var b = box();
+    lines.forEach(function (l) { l.forEach(function (p) { put(b, p[0], p[1]); }); });
+    return b;
+  }
+  function drawLines(lines, color) {
+    if (!hasCanvas() || !lines.length) return "";
+    var b = linesBox(lines), w = b.maxX - b.minX, hgt = b.maxY - b.minY;
+    if (!isFinite(w) || !isFinite(hgt) || (w <= 0 && hgt <= 0)) return "";
+    var pad = 12, k = (THUMB - pad * 2) / Math.max(w, hgt, 1e-9), ox = (THUMB - w * k) / 2, oy = (THUMB - hgt * k) / 2;
+    var cv = newCanvas(), ctx = cv.ctx;
+    ctx.strokeStyle = color; ctx.lineWidth = 1.4; ctx.lineJoin = "round"; ctx.lineCap = "round";
+    ctx.beginPath();
+    lines.forEach(function (l) {
+      l.forEach(function (p, i) {
+        var x = ox + (p[0] - b.minX) * k, y = THUMB - (oy + (p[1] - b.minY) * k); /* Y は上向き */
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+    });
+    ctx.stroke();
+    return cv.c.toDataURL("image/png");
+  }
+
+  /* ---------- DXF ---------- */
+  function dxfParse(u8) {
+    var raw = text(u8).split(/\r?\n/), pairs = [];
+    for (var i = 0; i + 1 < raw.length; i += 2) {
+      var code = parseInt(raw[i], 10);
+      if (isNaN(code)) { i--; continue; }
+      pairs.push([code, raw[i + 1].trim()]);
+    }
+    var unit = 1, units = { 1: 25.4, 2: 304.8, 4: 1, 5: 10, 6: 1000 }, ext = box(), section = "", headerVar = "", ents = [], cur = null, inEnt = false;
+    for (var n = 0; n < pairs.length; n++) {
+      var c = pairs[n][0], v = pairs[n][1];
+      if (c === 0) {
+        if (v === "SECTION") { section = ""; cur = null; continue; }
+        if (v === "ENDSEC") { section = ""; cur = null; continue; }
+        if (section === "ENTITIES") { cur = { type: v, codes: [] }; ents.push(cur); }
+        continue;
+      }
+      if (c === 2 && !section && (!cur)) { section = v; continue; }
+      if (section === "HEADER") {
+        if (c === 9) { headerVar = v; continue; }
+        if (headerVar === "$INSUNITS" && c === 70 && units[+v]) unit = units[+v];
+        if (headerVar === "$EXTMIN" || headerVar === "$EXTMAX") { if (c === 10) put(ext, +v, NaN); if (c === 20) put(ext, NaN, +v); }
+        continue;
+      }
+      if (cur) cur.codes.push([c, v]);
+    }
+    /* 図形を折れ線にする */
+    var lines = [], poly = null;
+    function num(e, code) { for (var i = 0; i < e.codes.length; i++) if (e.codes[i][0] === code) return parseFloat(e.codes[i][1]); return NaN; }
+    function all(e, cx, cy) {
+      var pts = [], x = null;
+      e.codes.forEach(function (p) { if (p[0] === cx) x = parseFloat(p[1]); else if (p[0] === cy && x != null) { pts.push([x, parseFloat(p[1])]); x = null; } });
+      return pts;
+    }
+    ents.forEach(function (e) {
+      var t = e.type;
+      if (t === "LINE") lines.push([[num(e, 10), num(e, 20)], [num(e, 11), num(e, 21)]]);
+      else if (t === "CIRCLE") lines.push(arcPoints(num(e, 10), num(e, 20), num(e, 40), 0, Math.PI * 2 - 1e-6, true));
+      else if (t === "ARC") lines.push(arcPoints(num(e, 10), num(e, 20), num(e, 40), num(e, 50) * Math.PI / 180, num(e, 51) * Math.PI / 180, true));
+      else if (t === "LWPOLYLINE") { var pl = all(e, 10, 20); if (num(e, 70) & 1 && pl.length) pl.push(pl[0]); if (pl.length > 1) lines.push(pl); }
+      else if (t === "SPLINE") { var sp = all(e, 11, 21); if (sp.length < 2) sp = all(e, 10, 20); if (sp.length > 1) lines.push(sp); }
+      else if (t === "POLYLINE") { poly = { closed: (num(e, 70) & 1) === 1, pts: [] }; }
+      else if (t === "VERTEX" && poly) { poly.pts.push([num(e, 10), num(e, 20)]); }
+      else if (t === "SEQEND" && poly) { if (poly.closed && poly.pts.length) poly.pts.push(poly.pts[0]); if (poly.pts.length > 1) lines.push(poly.pts); poly = null; }
+    });
+    lines = lines.map(function (l) { return l.filter(function (p) { return isFinite(p[0]) && isFinite(p[1]); }).map(function (p) { return [p[0] * unit, p[1] * unit]; }); })
+      .filter(function (l) { return l.length > 1; });
+    return { lines: lines, ext: ext, unit: unit };
+  }
+  function dxfSize(u8) {
+    var d = dxfParse(u8), b = d.lines.length ? linesBox(d.lines) : null;
+    if (!b) { /* 部品がブロックの挿入だけのときは図面の範囲を使う */
+      if (!isFinite(d.ext.maxX) || !isFinite(d.ext.maxY)) return "";
+      return sizeText([(d.ext.maxX - d.ext.minX) * d.unit, (d.ext.maxY - d.ext.minY) * d.unit]);
+    }
+    return sizeText([b.maxX - b.minX, b.maxY - b.minY]);
+  }
+
+  /* ---------- G コード ---------- */
+  function gcodeParse(u8) {
+    var rows = text(u8).toUpperCase().split(/\r?\n/);
+    var abs = true, mode = 0, scale = 1, x = 0, y = 0, z = 0, lines = [], cur = null;
+    for (var n = 0; n < rows.length; n++) {
+      var line = rows[n].replace(/\([^)]*\)/g, "").replace(/;.*$/, "");
+      if (!line.trim() || line.charAt(0) === "%") continue;
+      var re = /([A-Z])\s*([+-]?(?:\d+\.?\d*|\.\d+))/g, m, w = {}, gs = [];
+      while ((m = re.exec(line))) { var v = parseFloat(m[2]); if (m[1] === "G") gs.push(v); else w[m[1]] = v; }
+      if (gs.indexOf(53) >= 0) continue; /* 機械座標での移動（原点復帰など）は数えない */
+      gs.forEach(function (gv) {
+        if (gv === 0 || gv === 1 || gv === 2 || gv === 3) mode = gv;
+        else if (gv === 90) abs = true; else if (gv === 91) abs = false;
+        else if (gv === 20) scale = 25.4; else if (gv === 21) scale = 1;
+      });
+      if (w.X == null && w.Y == null && w.Z == null) continue;
+      var px = x, py = y;
+      if (w.X != null) x = abs ? w.X * scale : x + w.X * scale;
+      if (w.Y != null) y = abs ? w.Y * scale : y + w.Y * scale;
+      if (w.Z != null) z = abs ? w.Z * scale : z + w.Z * scale;
+      if (mode === 0) { cur = null; continue; } /* 早送りは線を切る */
+      if (!cur) { cur = [[px, py]]; lines.push(cur); }
+      if ((mode === 2 || mode === 3) && (w.I != null || w.J != null || (w.R != null && (x !== px || y !== py)))) {
+        var cx, cy;
+        if (w.I != null || w.J != null) { cx = px + (w.I || 0) * scale; cy = py + (w.J || 0) * scale; }
+        else { /* R 指定: 2点と半径から中心を出す */
+          var r = w.R * scale, dx = x - px, dy = y - py, d = Math.sqrt(dx * dx + dy * dy), hh = Math.sqrt(Math.max(0, r * r - d * d / 4));
+          var s = ((mode === 2) === (r > 0)) ? -1 : 1; /* G2 は時計回り */
+          cx = px + dx / 2 + s * (-dy) * hh / d; cy = py + dy / 2 + s * dx * hh / d;
+        }
+        var rr = Math.sqrt((px - cx) * (px - cx) + (py - cy) * (py - cy));
+        var pts = arcPoints(cx, cy, rr, Math.atan2(py - cy, px - cx), Math.atan2(y - cy, x - cx), mode === 3);
+        for (var i = 1; i < pts.length; i++) cur.push(pts[i]);
+      } else cur.push([x, y]);
+    }
+    return lines.filter(function (l) { return l.length > 1; });
+  }
+  function gcodeSize(u8) {
+    var lines = gcodeParse(u8);
+    if (!lines.length) return "";
+    var b = linesBox(lines);
+    return sizeText([b.maxX - b.minX, b.maxY - b.minY]);
+  }
+
+  /* ---------- STL ---------- */
+  function stlTriangles(u8) {
+    var dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength), out = [];
+    var n = u8.length >= 84 ? dv.getUint32(80, true) : 0;
+    if (u8.length >= 84 && 84 + n * 50 === u8.length) {
+      out = new Float32Array(n * 9);
+      for (var i = 0; i < n; i++) for (var k = 0; k < 9; k++) out[i * 9 + k] = dv.getFloat32(84 + i * 50 + 12 + k * 4, true);
+      return out;
+    }
+    var re = /vertex\s+(\S+)\s+(\S+)\s+(\S+)/gi, m, t = text(u8), arr = [];
+    while ((m = re.exec(t))) arr.push(+m[1], +m[2], +m[3]);
+    return new Float32Array(arr.slice(0, Math.floor(arr.length / 9) * 9));
+  }
+  function stlSize(u8) {
+    var tri = stlTriangles(u8), b = box();
+    for (var i = 0; i < tri.length; i += 3) put(b, tri[i], tri[i + 1], tri[i + 2]);
+    if (!isFinite(b.maxX)) return "";
+    return sizeText([b.maxX - b.minX, b.maxY - b.minY, b.maxZ - b.minZ]);
+  }
+  /* 斜め上から見た陰影つきの絵。画素ごとに手前の面だけを残す（奥行きの比較）ので、大きな面が重なっても欠けない */
+  function stlThumb(u8) {
+    if (!hasCanvas()) return "";
+    var tri = stlTriangles(u8), n = tri.length / 9;
+    if (!n || n > 400000) return "";
+    var az = -Math.PI / 4, el = Math.atan(1 / Math.sqrt(2)); /* 等角に近い向き */
+    var ca = Math.cos(az), sa = Math.sin(az), ce = Math.cos(el), se = Math.sin(el);
+    var P = new Float32Array(tri.length), b = box();
+    for (var i = 0; i < tri.length; i += 3) {
+      var X = tri[i], Y = tri[i + 1], Z = tri[i + 2];
+      var x1 = X * ca - Y * sa, y1 = X * sa + Y * ca;            /* Z 軸まわりに回す */
+      var sx = x1, sy = y1 * se + Z * ce, d = -y1 * ce + Z * se; /* 見下ろす（d が大きいほど手前） */
+      P[i] = sx; P[i + 1] = sy; P[i + 2] = d; put(b, sx, sy);
+    }
+    var w = b.maxX - b.minX, hgt = b.maxY - b.minY;
+    if (!(w > 0 || hgt > 0)) return "";
+    var S = THUMB, pad = 10, k = (S - pad * 2) / Math.max(w, hgt), ox = (S - w * k) / 2, oy = (S - hgt * k) / 2;
+    var zbuf = new Float32Array(S * S).fill(-Infinity), col = new Uint8ClampedArray(S * S * 4);
+    for (var q = 0; q < S * S; q++) { col[q * 4] = col[q * 4 + 1] = col[q * 4 + 2] = col[q * 4 + 3] = 255; }
+    for (var t = 0; t < n; t++) {
+      var o = t * 9;
+      var ax = P[o + 3] - P[o], ay = P[o + 4] - P[o + 1], ad = P[o + 5] - P[o + 2];
+      var bx = P[o + 6] - P[o], by = P[o + 7] - P[o + 1], bd = P[o + 8] - P[o + 2];
+      var nx = ay * bd - ad * by, ny = ad * bx - ax * bd, nz = ax * by - ay * bx, len = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
+      var light = Math.abs((nx * 0.3 + ny * 0.5 + nz * 0.8) / len / Math.sqrt(0.98)); /* 向きが表裏どちらでも明るさを出す */
+      var shade = 70 + 165 * light;
+      /* 画面の座標（Y は上向きなので反転） */
+      var x0 = ox + (P[o] - b.minX) * k, y0 = S - (oy + (P[o + 1] - b.minY) * k), z0 = P[o + 2];
+      var x1b = ox + (P[o + 3] - b.minX) * k, y1b = S - (oy + (P[o + 4] - b.minY) * k), z1 = P[o + 5];
+      var x2 = ox + (P[o + 6] - b.minX) * k, y2 = S - (oy + (P[o + 7] - b.minY) * k), z2 = P[o + 8];
+      var area = (x1b - x0) * (y2 - y0) - (x2 - x0) * (y1b - y0);
+      if (Math.abs(area) < 1e-9) continue;
+      var minx = Math.max(0, Math.floor(Math.min(x0, x1b, x2))), maxx = Math.min(S - 1, Math.ceil(Math.max(x0, x1b, x2)));
+      var miny = Math.max(0, Math.floor(Math.min(y0, y1b, y2))), maxy = Math.min(S - 1, Math.ceil(Math.max(y0, y1b, y2)));
+      for (var py = miny; py <= maxy; py++) {
+        for (var px = minx; px <= maxx; px++) {
+          var cx = px + 0.5, cy = py + 0.5;
+          var w0 = ((x1b - cx) * (y2 - cy) - (x2 - cx) * (y1b - cy)) / area;
+          var w1 = ((x2 - cx) * (y0 - cy) - (x0 - cx) * (y2 - cy)) / area;
+          var w2 = 1 - w0 - w1;
+          if (w0 < -1e-4 || w1 < -1e-4 || w2 < -1e-4) continue;
+          var dz = w0 * z0 + w1 * z1 + w2 * z2, idx = py * S + px;
+          if (dz <= zbuf[idx]) continue;
+          zbuf[idx] = dz;
+          col[idx * 4] = shade; col[idx * 4 + 1] = shade; col[idx * 4 + 2] = Math.min(255, shade + 8);
+        }
+      }
+    }
+    var cv = newCanvas();
+    cv.ctx.putImageData(new ImageData(col, S, S), 0, 0);
+    return cv.c.toDataURL("image/png");
+  }
+
+  /* ---------- 画像ファイル ---------- */
+  function imageThumb(u8, ext) {
+    if (!hasCanvas()) return Promise.resolve("");
+    var type = ext === "jpg" ? "image/jpeg" : "image/" + ext;
+    return new Promise(function (resolve) {
+      var url = URL.createObjectURL(new Blob([u8], { type: type })), img = new Image();
+      img.onload = function () {
+        var k = Math.min(1, THUMB / Math.max(img.width, img.height)), c = document.createElement("canvas");
+        c.width = Math.max(1, Math.round(img.width * k)); c.height = Math.max(1, Math.round(img.height * k));
+        var ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+        ctx.drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url);
+        resolve(c.toDataURL("image/jpeg", 0.85)); /* 写真は JPEG のほうが小さい */
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); resolve(""); };
+      img.src = url;
+    });
+  }
+
+  /* PNG のバイト列を data URI に。大きすぎるときは縮める（スプレッドシートの1マスに入るように） */
+  function pngDataUri(png) {
+    var s = "";
+    for (var i = 0; i < png.length; i += 0x8000) s += String.fromCharCode.apply(null, png.subarray(i, i + 0x8000));
+    return shrink("data:image/png;base64," + btoa(s));
+  }
+  function shrink(uri) {
+    if (!uri || uri.length <= 40000 || !hasCanvas()) return Promise.resolve(uri && uri.length <= 45000 ? uri : "");
+    return new Promise(function (resolve) {
+      var img = new Image();
+      img.onload = function () {
+        var k = Math.min(1, 120 / Math.max(img.width, img.height)), c = document.createElement("canvas");
+        c.width = Math.max(1, Math.round(img.width * k)); c.height = Math.max(1, Math.round(img.height * k));
+        var ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+        ctx.drawImage(img, 0, 0, c.width, c.height);
+        var small = c.toDataURL("image/jpeg", 0.85);
+        resolve(small.length <= 45000 ? small : "");
+      };
+      img.onerror = function () { resolve(""); };
+      img.src = uri;
+    });
+  }
+
+  function analyze(name, u8) {
+    var ext = extOf(name), kind = KINDS[ext];
+    function out(size, thumbP) {
+      return Promise.resolve(thumbP).then(function (thumb) {
+        var r = {};
+        if (size) { r.size = size; r.src = name; }
+        if (thumb) { r.thumb = thumb; r.thumbSrc = name; }
+        return r.size || r.thumb ? r : null;
+      });
+    }
+    try {
+      if (kind === "ole") { var png = oleThumbnail(u8); return out("", png ? pngDataUri(png) : ""); }
+      if (kind === "stl") return out(stlSize(u8), shrink(stlThumb(u8)));
+      if (kind === "dxf") { var d = dxfParse(u8); return out(dxfSize(u8), shrink(drawLines(d.lines, "#1f2a30"))); }
+      if (kind === "gcode") { var gl = gcodeParse(u8); return out(gcodeSize(u8), shrink(drawLines(gl, "#a94410"))); }
+      if (kind === "image") return out("", imageThumb(u8, ext).then(shrink));
+      return Promise.resolve(null);
+    } catch (e) {
+      return Promise.resolve(null); /* 読み取れないファイルは黙って飛ばす（添付そのものは成功させる） */
+    }
+  }
+
+  g.KakkouMeta = { analyze: analyze, canRead: canRead, _test: { oleThumbnail: oleThumbnail, gcodeSize: gcodeSize, gcodeParse: gcodeParse, dxfSize: dxfSize, dxfParse: dxfParse, stlSize: stlSize } };
+})(typeof window !== "undefined" ? window : globalThis);
+</script>
+
+<script>window.CNC_API_URL = "https://script.google.com/macros/s/AKfycbzG0rqrxeCfHqBO56nabBBjuAPPg1CUwbHo9tm_4wfaStB5TYClO_L_YvzGN9crI0bz/exec"; window.CNC_BUILD = "2026-10-09 12:28:36";</script>
 <script>
 (function () {
   var NO_MAT = "材質未設定";
@@ -518,10 +926,14 @@ header h1 .h1-sub { font-size: 13px; font-weight: 500; color: var(--muted); marg
   var whoFilter = "";
   var procFilter = ""; /* "" すべて / 種類の id */ /* "" すべて / "@me" 自分の担当 / "@none" 担当なし / 名前 */
   var token = "", me = "", projectId = "", projects = [];
+  var slackReady = false, editSlack = {}; /* Slack のトークンが設定済みか / 通知先を書き換え中のプロジェクト（id → 入力中の値） */
   var ready = false, gate = null;
   var busy = {}, camBusy = {}, saving = {}, deleting = {};
   var editQty = {}, focusQty = "";
-  var editDue = {}, focusDue = ""; /* 期限を書き換え中の部品（id → 入力中の値） */ /* 数量を書き換え中の部品（id → 入力中の値）と、入力欄にフォーカスを移す部品 */
+  var editDue = {}, focusDue = "";
+  var editSize = {}, focusSize = ""; /* だいたいの大きさを書き換え中の部品 */
+  var thumbCache = {}, thumbPending = {}, thumbFailedAt = {}; /* 部品の画像（id → { rev, data }）と、取りに行っている最中の id */
+  var reading = {}; /* 「画像と大きさを読み取る」を実行中の部品 */ /* 期限を書き換え中の部品（id → 入力中の値） */ /* 数量を書き換え中の部品（id → 入力中の値）と、入力欄にフォーカスを移す部品 */
   var sel = new Set();
   var zipping = false, zipLabel = "", marking = false;
   var dateFmt = new Intl.DateTimeFormat("ja-JP", { month: "numeric", day: "numeric" });
@@ -642,6 +1054,7 @@ header h1 .h1-sub { font-size: 13px; font-weight: 500; color: var(--muted); marg
   function applyState(s) {
     var sameProject = (s.projectId || "") === projectId; /* 切り替えの途中に届いた古い応答なら部品は使わない */
     projects = s.projects || [];
+    slackReady = !!s.slackReady;
     var sig = s.members.join("\n"), changed = sig !== members.join("\n");
     members = s.members;
     var projOk = projects.some(function (pj) { return pj.id === projectId; });
@@ -803,11 +1216,63 @@ header h1 .h1-sub { font-size: 13px; font-weight: 500; color: var(--muted); marg
         h("span", { class: "pj-btns" },
           cur ? h("span", { class: "msg" }, "表示中")
             : h("button", { class: "btn small primary", type: "button", onclick: function () { openProject(pj.id); } }, "開く"),
-          del)));
+          del),
+        slackRow(pj)));
     });
+    $("slack-note").hidden = slackReady;
     $("proj-list").hidden = !projects.length;
     $("proj-empty").hidden = projects.length > 0;
     $("g-proj-cancel").hidden = !projectName();
+  }
+  /* プロジェクトごとの Slack の通知先（部品の追加・期限の3日前と1日前を知らせる） */
+  function slackRow(pj) {
+    var box = h("div", { class: "pj-slack" }, h("span", { class: "pj-slack-lbl" }, "Slack 通知"));
+    if (editSlack[pj.id] != null) {
+      var save = function () { saveSlack(pj, editSlack[pj.id]); };
+      var cancel = function () { delete editSlack[pj.id]; fillProjects(); };
+      box.appendChild(h("input", { id: "slack-" + pj.id, class: "slack-input", value: editSlack[pj.id], maxlength: "80", placeholder: "例: #nhk2027（チャンネル名）", "aria-label": "Slack のチャンネル: " + pj.name,
+        oninput: function (e) { editSlack[pj.id] = e.target.value; },
+        onkeydown: function (e) { if (e.key === "Enter") { e.preventDefault(); save(); } else if (e.key === "Escape") { e.preventDefault(); cancel(); } } }));
+      box.appendChild(h("button", { class: "btn small primary", type: "button", onclick: save }, "保存"));
+      if (pj.slackChannel) box.appendChild(h("button", { class: "btn small", type: "button", onclick: function () { saveSlack(pj, ""); } }, "通知しない"));
+      box.appendChild(h("button", { class: "btn small", type: "button", onclick: cancel }, "やめる"));
+      return box;
+    }
+    var edit = function () { editSlack[pj.id] = pj.slackChannel || ""; fillProjects(); var i = $("slack-" + pj.id); if (i) i.focus(); };
+    if (!pj.slackChannel) {
+      box.appendChild(h("span", { class: "msg" }, "なし"));
+      box.appendChild(h("button", { class: "linkbtn", type: "button", onclick: edit }, "＋ 通知先のチャンネルを設定"));
+      return box;
+    }
+    box.appendChild(h("strong", { class: "slack-ch" }, pj.slackChannel));
+    box.appendChild(h("button", { class: "linkbtn", type: "button", onclick: edit }, "変更"));
+    box.appendChild(h("button", { class: "linkbtn", type: "button", disabled: !slackReady, onclick: function () { testSlack(pj); } }, "テスト送信"));
+    return box;
+  }
+  function saveSlack(pj, value) {
+    value = String(value || "").trim();
+    delete editSlack[pj.id];
+    var j = newJob();
+    j.retry = function () { run(); };
+    function run() {
+      setJob(j, "run", value ? "「" + pj.name + "」の通知先を " + value + " にしています…" : "「" + pj.name + "」の Slack 通知をやめています…");
+      call("api_setProjectSlack", token, pj.id, value, me).then(function (ch) {
+        finishJob(j, ch ? "「" + pj.name + "」の通知先を " + ch + " にしました。「テスト送信」で届くか確かめてください" : "「" + pj.name + "」の Slack 通知をやめました");
+      }, function (e) { setJob(j, "error", "通知先を変えられませんでした: " + errText(e)); gateIfNeeded(e); }).then(refresh);
+    }
+    fillProjects();
+    run();
+  }
+  function testSlack(pj) {
+    var j = newJob();
+    j.retry = function () { run(); };
+    function run() {
+      setJob(j, "run", pj.slackChannel + " にテスト通知を送っています…");
+      call("api_testSlack", token, pj.id, me).then(function () {
+        finishJob(j, pj.slackChannel + " にテスト通知を送りました。Slack で届いているか確かめてください");
+      }, function (e) { setJob(j, "error", "テスト通知を送れませんでした: " + errText(e)); gateIfNeeded(e); });
+    }
+    run();
   }
   function deleteProject(pj) {
     var j = newJob();
@@ -936,7 +1401,10 @@ header h1 .h1-sub { font-size: 13px; font-weight: 500; color: var(--muted); marg
   function uploadOne(p, f) {
     f = snapFile(f);
     return f.data.then(function (b64) {
-      return call("api_uploadFile", token, p.id, f.name, MIME[extOf(f.name)] || "application/octet-stream", b64, me);
+      return call("api_uploadFile", token, p.id, f.name, MIME[extOf(f.name)] || "application/octet-stream", b64, me).then(function (r) {
+        if (!window.KakkouMeta || !KakkouMeta.canRead(f.name)) return r;
+        return sendMeta(p.id, f.name, b64ToBytes(b64)).catch(function () {}).then(function () { return r; });
+      });
     });
   }
   /* 1ファイルずつ順番に送る */
@@ -1032,7 +1500,7 @@ header h1 .h1-sub { font-size: 13px; font-weight: 500; color: var(--muted); marg
     if (typeof JSZip === "undefined") { showNotice("zip作成用の部品を読み込めませんでした。ページを開き直してください。"); return; }
     zipping = true; zipLabel = ""; updateBar();
     var z = new JSZip();
-    var rows = [["加工の種類", "板厚・肉厚(mm)", "断面", "長さ(mm)", "材質", "部品名", "数量", "期限", "機構", "備考", "ファイル"]];
+    var rows = [["加工の種類", "板厚・肉厚(mm)", "断面", "長さ(mm)", "材質", "部品名", "数量", "期限", "大きさ(mm)", "機構", "備考", "ファイル"]];
     var noCam = [], failed = [], jobs = [];
     var groups = unique(list.map(groupKey));
     var procs = unique(list.map(procOf));
@@ -1040,7 +1508,7 @@ header h1 .h1-sub { font-size: 13px; font-weight: 500; color: var(--muted); marg
       .forEach(function (p) {
         var dir = (procs.length > 1 ? safe(procInfo(procOf(p)).label) + "/" : "") + stockDir(p) + "/" + safe(p.name) + (formOf(p) === "pipe" ? "_L" + fmtT(p.length) : "") + "_x" + (p.qty || 1) + (p.mechanism ? "_" + safe(p.mechanism) : "") + "/";
         var files = camsOf(p.id);
-        rows.push([procInfo(procOf(p)).label, p.thickness == null ? "" : fmtT(p.thickness), p.section || "", p.length == null ? "" : fmtT(p.length), matOf(p), p.name, p.qty || 1, p.due || "", p.mechanism || "", p.note || "", files.map(function (c) { return c.name; }).join(" / ")]);
+        rows.push([procInfo(procOf(p)).label, p.thickness == null ? "" : fmtT(p.thickness), p.section || "", p.length == null ? "" : fmtT(p.length), matOf(p), p.name, p.qty || 1, p.due || "", p.sizeText || p.sizeAuto || "", p.mechanism || "", p.note || "", files.map(function (c) { return c.name; }).join(" / ")]);
         if (!files.length) noCam.push(p.name);
         var used = {};
         files.forEach(function (c) {
@@ -1211,6 +1679,109 @@ header h1 .h1-sub { font-size: 13px; font-weight: 500; color: var(--muted); marg
     svg.appendChild(path);
     return svg;
   }
+  /* ---------- 部品の画像とだいたいの大きさ ---------- */
+  function thumbImg(p) {
+    if (!p.thumbRev) return null;
+    var c = thumbCache[p.id];
+    if (!c || c.rev !== p.thumbRev) return h("span", { class: "p-thumb loading", "aria-hidden": "true" });
+    if (!c.data) return null;
+    return h("img", { class: "p-thumb", src: c.data, alt: p.name + " の画像", title: "押すと大きく表示", onclick: function () { showThumb(p, c.data); } });
+  }
+  function showThumb(p, data) {
+    var d = $("thumb-dialog");
+    $("thumb-big").src = data; $("thumb-big").alt = p.name + " の画像";
+    $("thumb-cap").textContent = p.name + (p.sizeText ? "・" + manualSize(p.sizeText) : p.sizeAuto ? "・約 " + p.sizeAuto + " mm" : "");
+    if (d.showModal) d.showModal(); else d.setAttribute("open", "");
+  }
+  $("thumb-close").addEventListener("click", function () { $("thumb-dialog").close(); });
+  $("thumb-dialog").addEventListener("click", function (e) { if (e.target === this) this.close(); });
+  /* 画面に出す部品の画像のうち、まだ持っていないものだけ取りに行く（一覧を軽くするため、画像は別に取る） */
+  function loadThumbs() {
+    var need = parts.filter(function (p) {
+      return p.thumbRev && !thumbPending[p.id] && (!thumbCache[p.id] || thumbCache[p.id].rev !== p.thumbRev) &&
+        !(thumbFailedAt[p.id] && Date.now() - thumbFailedAt[p.id] < 60000); /* 通信に失敗したものは1分あけて取り直す */
+    });
+    for (var i = 0; i < need.length; i += 40) {
+      (function (list) {
+        list.forEach(function (p) { thumbPending[p.id] = p.thumbRev; });
+        /* サーバーに無かったものは「この版は無い」と覚えて繰り返さない（画像が変われば版が変わるので取り直す） */
+        call("api_getThumbs", token, list.map(function (p) { return p.id; })).then(function (map) {
+          list.forEach(function (p) { thumbCache[p.id] = { rev: thumbPending[p.id], data: map[p.id] || "" }; delete thumbFailedAt[p.id]; });
+        }, function () {
+          list.forEach(function (p) { thumbFailedAt[p.id] = Date.now(); });
+        }).then(function () {
+          list.forEach(function (p) { delete thumbPending[p.id]; });
+          render();
+        });
+      })(need.slice(i, i + 40));
+    }
+  }
+  /* 大きさの札: 手で入れたものを優先。角パイプは長さ・断面があるので出さない */
+  function sizeBlock(p, off) {
+    if (formOf(p) === "pipe") return null;
+    var start = function () { editSize[p.id] = p.sizeText || ""; focusSize = p.id; render(); };
+    if (editSize[p.id] != null) {
+      var cancel = function () { delete editSize[p.id]; render(); };
+      return h("div", { class: "p-size" },
+        h("input", { id: "size-" + p.id, class: "size-input", maxlength: "30", value: editSize[p.id], placeholder: "例: 120×80", "aria-label": "だいたいの大きさ: " + p.name,
+          oninput: function (e) { editSize[p.id] = e.target.value; },
+          onkeydown: function (e) { if (e.key === "Enter") { e.preventDefault(); saveSize(p); } else if (e.key === "Escape") { cancel(); } } }),
+        h("button", { class: "btn small primary", type: "button", onclick: function () { saveSize(p); } }, "保存"),
+        p.sizeText ? h("button", { class: "btn small", type: "button", onclick: function () { editSize[p.id] = ""; saveSize(p); } }, "手入力を消す") : null,
+        h("button", { class: "btn small", type: "button", onclick: cancel }, "やめる"));
+    }
+    var box = h("div", { class: "p-size" });
+    if (p.sizeText) box.appendChild(h("button", { class: "size-btn", type: "button", disabled: off, title: "大きさを変える", onclick: start }, "大きさ " + manualSize(p.sizeText), h("small", null, "（手入力）"), h("span", { class: "qty-pen" }, "変更")));
+    else if (p.sizeAuto) box.appendChild(h("button", { class: "size-btn", type: "button", disabled: off, title: "手で入れ直す", onclick: start }, "大きさ 約 " + p.sizeAuto + " mm", h("small", null, "（" + p.sizeSrc + " から）"), h("span", { class: "qty-pen" }, "変更")));
+    else if (p.status !== "done") box.appendChild(h("button", { class: "linkbtn", type: "button", disabled: off, onclick: start }, "＋ だいたいの大きさを入れる"));
+    /* 読み取れるファイルがあるのに、画像も自動の大きさも無い部品（この機能より前に添付したもの）には読み取りボタンを出す */
+    var readable = camsOf(p.id).filter(function (c) { return window.KakkouMeta && KakkouMeta.canRead(c.name); });
+    if (readable.length && !p.thumbRev && !p.sizeAuto) {
+      box.appendChild(h("button", { class: "linkbtn", type: "button", disabled: off || !!reading[p.id], onclick: function () { readMeta(p, readable); } }, reading[p.id] ? "読み取り中…" : "画像と大きさを読み取る"));
+    }
+    return box.childNodes.length ? box : null;
+  }
+  /* 手で入れた大きさの表示: 先頭の「約」は重ねない。数字（と ×）だけなら mm を付ける */
+  function manualSize(t) {
+    t = String(t).replace(/^約\s*/, "");
+    return "約 " + t + (/^[\d.\s×xX*]+$/.test(t) ? " mm" : "");
+  }
+  function saveSize(p) {
+    var v = String(editSize[p.id] || "").trim();
+    delete editSize[p.id];
+    if (v === (p.sizeText || "")) { render(); return; }
+    var n = "「" + p.name + "」";
+    runOp([p.id], v ? { run: n + "の大きさを「" + v + "」にしています…", done: n + "の大きさを「" + v + "」にしました", fail: n + "の大きさを変えられませんでした" }
+      : { run: n + "の手入力の大きさを消しています…", done: n + "の手入力の大きさを消しました", fail: n + "の大きさを変えられませんでした" },
+      [function () { return call("api_updatePart", token, p.id, { sizeText: v }, me); }]);
+  }
+  /* 添付ファイルの中身から画像・大きさを読み取ってサーバーに保存する（読めなければ何もしない） */
+  function sendMeta(partId, name, bytes) {
+    if (!window.KakkouMeta || !KakkouMeta.canRead(name)) return Promise.resolve(false);
+    return KakkouMeta.analyze(name, bytes).then(function (info) {
+      if (!info) return false;
+      return call("api_setAutoInfo", token, partId, info, me).then(function () { return true; });
+    });
+  }
+  /* 添付済みのファイルを取り出して読み取る（この機能より前に添付した部品用） */
+  function readMeta(p, files) {
+    if (reading[p.id]) return;
+    reading[p.id] = true; render();
+    var j = newJob(), got = false;
+    setJob(j, "run", "「" + p.name + "」の画像と大きさを読み取っています…");
+    var chain = Promise.resolve();
+    files.forEach(function (c) {
+      chain = chain.then(function () {
+        return fetchCamBytes(c).then(function (bytes) { return sendMeta(p.id, c.name, bytes); }).then(function (ok) { got = got || ok; }, function () {});
+      });
+    });
+    chain.then(function () {
+      if (got) finishJob(j, "「" + p.name + "」の画像と大きさを読み取りました");
+      else { setJob(j, "error", "「" + p.name + "」のファイルから画像や大きさを読み取れませんでした。手で「だいたいの大きさ」を入れてください。"); j.retry = function () { removeJob(j); readMeta(p, files); }; }
+      return refresh();
+    }).then(function () { delete reading[p.id]; render(); });
+  }
+
   /* ---------- 期限（いつまでに欲しいか） ---------- */
   /* 残り日数ごとの色。max 日以内ならその色（期限切れはマイナスなので赤） */
   var URGENCY = [{ max: 2, cls: "red" }, { max: 6, cls: "yellow" }, { max: 13, cls: "green" }, { max: Infinity, cls: "blue" }];
@@ -1311,11 +1882,15 @@ header h1 .h1-sub { font-size: 13px; font-weight: 500; color: var(--muted); marg
         h("button", { class: "check", type: "button", "aria-pressed": String(done), title: done ? "未加工に戻す" : "加工済みにする", "aria-label": (done ? "未加工に戻す: " : "加工済みにする: ") + p.name, disabled: off, onclick: function () { setStatus(p, done ? "todo" : "done"); } }, checkIcon()),
         h("span", { class: "cap" }, "加工済み")),
       h("div", { class: "p-main" },
-        h("span", { class: "p-name" }, p.name),
-        h("span", { class: "p-meta" },
-          p.mechanism ? h("span", null, p.mechanism) : null,
-          qtyBlock(p, off),
-          formOf(p) === "pipe" ? h("span", { class: "len" }, "L" + fmtT(p.length) + "mm") : null),
+        h("div", { class: "p-top" },
+          thumbImg(p),
+          h("div", { class: "p-titles" },
+            h("span", { class: "p-name" }, p.name),
+            h("span", { class: "p-meta" },
+              p.mechanism ? h("span", null, p.mechanism) : null,
+              qtyBlock(p, off),
+              formOf(p) === "pipe" ? h("span", { class: "len" }, "L" + fmtT(p.length) + "mm") : null))),
+        sizeBlock(p, off),
         dueBlock(p, off),
         assignBlock(p, off),
         procBlock(p, off),
@@ -1518,6 +2093,11 @@ header h1 .h1-sub { font-size: 13px; font-weight: 500; color: var(--muted); marg
       var di = $("due-" + focusDue); focusDue = "";
       if (di) di.focus();
     }
+    if (focusSize) {
+      var zi = $("size-" + focusSize); focusSize = "";
+      if (zi) { zi.focus(); zi.select(); }
+    }
+    loadThumbs();
   }
 
   /* ---------- イベント ---------- */
@@ -1657,12 +2237,13 @@ header h1 .h1-sub { font-size: 13px; font-weight: 500; color: var(--muted); marg
       thickness: form === "print" ? null : Math.round(t * 1000) / 1000,
       section: form === "pipe" ? sec : "", length: form === "pipe" ? Math.round(len * 10) / 10 : null,
       material: $("f-mat").value.trim(), qty: qty, mechanism: $("f-mech").value.trim(), note: $("f-note").value.trim(),
-      due: $("f-due").value || ""
+      due: $("f-due").value || "",
+      sizeText: form === "pipe" ? "" : $("f-size").value.trim()
     }, fs);
     /* 次の部品へ: ファイル・部品名・数量・備考は空に、加工の種類は選び直し（ファイルから自動で判定するため）。
        板厚・材質・機構などは続けて同じものを使うことが多いので残す */
     say(msg, "");
-    $("f-name").value = ""; nameAuto = ""; $("f-note").value = ""; $("f-qty").value = "1";
+    $("f-name").value = ""; nameAuto = ""; $("f-note").value = ""; $("f-qty").value = "1"; $("f-size").value = "";
     $("f-files").value = ""; setFormFiles([]);
     resetFormProc();
     $("add-panel").scrollIntoView({ block: "nearest" });
